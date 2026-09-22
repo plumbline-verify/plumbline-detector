@@ -19,6 +19,7 @@ from . import SCHEMA_VERSION, __version__, snapshot
 from .gha import checks as gha_checks
 from .gha import model as gha_model
 from .py import checks as py_checks
+from .py import collection as py_collection
 from .py import common as py_common
 
 CHECK_ORDER = [
@@ -30,6 +31,7 @@ CHECK_ORDER = [
     "EC-EXIT-BEFORE-ASSERT",
     "EC-EQUALITY-OVERRIDE",
     "EC-RUNNER-PATCHED",
+    "EC-TESTS-NOT-RUN",
     "EC-NO-ASSERTION",
     "EC-MOCK-ONLY",
     "EC-SPECIAL-CASED",
@@ -49,6 +51,7 @@ FINGERPRINT_MODULES = [
     "py/common.py",
     "py/assertions.py",
     "py/checks.py",
+    "py/collection.py",
     "catalog.py",
     "render.py",
 ]
@@ -64,8 +67,9 @@ def ruleset_fingerprint() -> str:
 
 
 class Context:
-    def __init__(self, snap):
+    def __init__(self, snap, collection=None):
         self.snap = snap
+        self.collection = collection
 
 
 def _canonical(obj) -> str:
@@ -96,7 +100,15 @@ def analyze(
     gm = gha_model.build(snap)
     gate = gha_model.gate_info(snap, required_checks, gate_files)
     pm = py_common.build(snap)
-    ctx = Context(snap)
+    coll = py_collection.build(snap, pm, gm)
+    # Files that pytest's configuration collects are test code, whatever their name.
+    for p in sorted(coll.collected_files):
+        if p in pm.impl_paths:
+            pm.impl_paths.remove(p)
+            pm.test_paths.append(p)
+            pm.files[p].is_test = True
+    pm.test_paths.sort()
+    ctx = Context(snap, coll)
     data_set = set(pm.data_paths)
     results = {}
     for fn in gha_checks.ALL:

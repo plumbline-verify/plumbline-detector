@@ -45,6 +45,21 @@ def _loc(pf, node, msg, **detail):
 # EC-NO-ASSERTION
 
 
+def _not_run_keys(ctx) -> set:
+    """(file, class, name) of tests the collection model says never run;
+    empty when there is no evidence that pytest is the runner."""
+    coll = getattr(ctx, "collection", None)
+    if coll is None or not coll.pytest_evidence:
+        return set()
+    # Tests that may still run (an unresolved invocation, -k on parameter IDs)
+    # stay in scope for the other checks.
+    return {
+        (coll.items[i].file, coll.items[i].cls, coll.items[i].name)
+        for i, (kind, _, _) in coll.not_run.items()
+        if kind not in ("unresolved", "deselected-param")
+    }
+
+
 def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     """EC-NO-ASSERTION: a test function that contains no assertion of any
     kind. It passes whenever it does not raise, so it cannot detect a wrong
@@ -52,10 +67,11 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     assertions.py and include calls to repo-local asserting helpers."""
     r = _base("EC-NO-ASSERTION", pm, pm.test_paths)
     helpers = asserting_helpers(pm)
+    not_run = _not_run_keys(ctx)
     total = skipped = 0
     for pf in pm.tests():
         for func, cls in iter_test_functions(pf):
-            if is_skipped(func):
+            if is_skipped(func) or (pf.path, cls.name if cls else None, func.name) in not_run:
                 skipped += 1
                 continue
             total += 1
@@ -65,7 +81,7 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     r.had_input = total > 0 or bool(r.unknowns)
     if not r.had_input:
         r.absent_reason = NO_TESTS if not pm.test_paths else "no test functions found in test files"
-    r.stats = {"test_functions": total, "skipped_tests_excluded": skipped, "without_assertion": len(r.findings)}
+    r.stats = {"test_functions": total, "not_run_tests_excluded": skipped, "without_assertion": len(r.findings)}
     return r
 
 
@@ -391,8 +407,22 @@ def ec_runner_patched(pm: PyModel, ctx) -> CheckResult:
     return r
 
 
+def _inside_tests(tree):
+    """ids of nodes nested inside a test function body. A hook defined there
+    configures a nested (pytester) session inside that test, not the session
+    that reports this repository's results."""
+    inside = set()
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name.startswith("test"):
+            for n in ast.walk(fn):
+                if n is not fn:
+                    inside.add(id(n))
+    return inside
+
+
 def _scan_runner(pf, r: CheckResult) -> int:
     hooks_seen = 0
+    nested = _inside_tests(pf.tree)
     for node in ast.walk(pf.tree):
         # patch calls
         if isinstance(node, ast.Call):
@@ -414,7 +444,15 @@ def _scan_runner(pf, r: CheckResult) -> int:
         # hooks
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in REPORT_HOOKS:
             hooks_seen += 1
-            _judge_hook(pf, node, r)
+            if id(node) in nested:
+                sub = CheckResult("sub")
+                _judge_hook(pf, node, sub)
+                r.unknowns.extend(
+                    Location(x.file, x.line, "inside a test function (nested session): " + x.message, x.detail)
+                    for x in sub.findings + sub.unknowns
+                )
+            else:
+                _judge_hook(pf, node, r)
         if isinstance(node, ast.ClassDef):
             bases = [(dotted(b) or "").split(".")[-1] for b in node.bases]
             if any(b in ("TestResult", "TextTestResult") for b in bases):
@@ -612,10 +650,11 @@ def ec_mock_only(pm: PyModel, ctx) -> CheckResult:
     assert on the mock; the real call is the code under test."""
     r = _base("EC-MOCK-ONLY", pm, pm.test_paths)
     helpers = asserting_helpers(pm)
+    not_run = _not_run_keys(ctx)
     total = with_mocks = 0
     for pf in pm.tests():
         for func, cls in iter_test_functions(pf):
-            if is_skipped(func):
+            if is_skipped(func) or (pf.path, cls.name if cls else None, func.name) in not_run:
                 continue
             total += 1
             only, n_mocks = _mock_only(func, cls, helpers)
@@ -847,7 +886,8 @@ def _handler_swallows(h: ast.ExceptHandler) -> bool:
         names = ["<bare>"]
     else:
         for t in (h.type.elts if isinstance(h.type, ast.Tuple) else [h.type]):
-            names.append((dotted(t) or "").split(".")[-1])
+            # exact names only: `pytest.fail.Exception` is not `Exception`
+            names.append((dotted(t) or "").removeprefix("builtins."))
     if not any(n in ("AssertionError", "Exception", "BaseException", "<bare>") for n in names):
         return False
     for stmt in h.body:
@@ -928,10 +968,61 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
     return r
 
 
+def ec_tests_not_run(pm: PyModel, ctx) -> CheckResult:
+    """EC-TESTS-NOT-RUN: tests that are present in the repository but that no
+    invocation the detector can find ever runs. The invocation gap in its
+    plainest form: the test counts as evidence and never executes.
+
+    FAIL: a test that is unconditionally skipped (@pytest.mark.skip,
+    skipif(True), xfail(run=False), unittest.skip, a module-level skip, a skip
+    as the test's first statement), or that every invocation deselects
+    (-k, -m, --deselect) or ignores (--ignore, --ignore-glob, collect_ignore).
+    UNKNOWN: tests outside collection scope (norecursedirs, testpaths,
+    python_files, command-line paths) — these may be test data rather than
+    tests — and anything the model cannot resolve: -k on parametrized tests,
+    unresolvable invocations, collection hooks, conditional collect_ignore.
+    Invocations are read from GitHub Actions, tox.ini, noxfile.py, Makefiles
+    and shell scripts; with none found, a plain `pytest` at each config root
+    is assumed. See py/collection.py for the model."""
+    r = _base("EC-TESTS-NOT-RUN", pm, pm.test_paths)
+    coll = ctx.collection
+    r.unknowns.extend(coll.issues)
+    groups: dict = {}
+    for idx, (kind, reason, inv) in sorted(coll.not_run.items()):
+        it = coll.items[idx]
+        if not coll.pytest_evidence and kind != "skipped":
+            continue
+        groups.setdefault((it.file, kind, reason), []).append(it)
+    for (file, kind, reason), its in sorted(groups.items()):
+        names = [f"{i.cls}.{i.name}" if i.cls else i.name for i in its]
+        detail = {"kind": kind, "tests": names[:20], "count": len(its)}
+        if kind in ("skipped", "deselected", "ignored"):
+            msg = f"{len(its)} test(s) never run: {reason}"
+            r.findings.append(Location(file, its[0].line, msg, detail))
+        else:
+            why = "-k on a parametrized test (parameter IDs not modeled)" if kind == "deselected-param" else reason
+            r.unknowns.append(Location(file, its[0].line, f"{len(its)} test(s) not run by any invocation found: {why}", detail))
+    if not coll.pytest_evidence and coll.items:
+        r.unknowns.append(Location("", None, "no evidence that pytest is the runner; only unconditional skips were evaluated"))
+    r.had_input = bool(coll.items)
+    if not r.had_input:
+        r.absent_reason = NO_TESTS if not pm.test_paths else "no test functions found"
+    runs = sum(1 for i in range(len(coll.items)) if i not in coll.not_run)
+    r.stats = {
+        "tests_enumerated": len(coll.items),
+        "tests_run": runs,
+        "tests_not_run": len(coll.not_run),
+        "invocations_found": sum(1 for i in coll.invocations if not i.default),
+        "pytest_configs": sorted(c.file for c in coll.configs.values() if c.file and not c.fallback_only),
+    }
+    return r
+
+
 ALL = [
     ec_exit_before_assert,
     ec_equality_override,
     ec_runner_patched,
+    ec_tests_not_run,
     ec_no_assertion,
     ec_mock_only,
     ec_special_cased,

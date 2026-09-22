@@ -34,6 +34,10 @@ CATALOG = {
         "Test reporting patched",
         "Test infrastructure rewrites results so failures are reported as passes.",
     ),
+    "EC-TESTS-NOT-RUN": (
+        "Tests present but never run",
+        "Tests are skipped unconditionally, deselected (-k, -m, --deselect) or ignored (--ignore, collect_ignore) in every invocation found, so they count as evidence without executing.",
+    ),
     "EC-NO-ASSERTION": (
         "Test without assertion",
         "The test passes whenever the code does not crash; it cannot detect a wrong answer.",

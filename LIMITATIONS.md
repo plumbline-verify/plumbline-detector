@@ -28,7 +28,7 @@ detector never does.
 | Proxy-coverage (execution without detection) | Partial: tests with no assertion, assertions that cannot fail or cannot run, mock-only tests. Tests with real but weak assertions are invisible. |
 | Reproducibility (works warm, not cold) | **None.** Nothing here checks lockfiles, pinned dependencies, network use in tests, or whether a clean clone builds. |
 | Falsifiability (would not fail if wrong) | Crude forms only (see above). |
-| Invocation (the check never ran and reported success) | Partial, for GitHub Actions only: skippable required jobs, permissive aggregators, `continue-on-error`, test jobs that cannot reach a required check, exit-0-before-assert. Tests excluded by configuration (`-k`, `--deselect`, `norecursedirs`, `collect_ignore`, markers), test files never collected, and test steps skipped by a step-level `if:` are **not** detected. |
+| Invocation (the check never ran and reported success) | Partial. GitHub Actions: skippable required jobs, permissive aggregators, `continue-on-error`, test jobs that cannot reach a required check. Python: exit-0-before-assert, and (`EC-TESTS-NOT-RUN`) tests skipped unconditionally or excluded by `-k`, `-m`, `--deselect`, `--ignore` and `collect_ignore` in every invocation found. Test steps skipped by a step-level `if:`, conditional skips, and selection done by plugins or collection hooks are **not** evaluated. |
 | Outcome (the measured thing is not the thing that matters) | **None.** This is a judgment about product intent that no static pattern can make. |
 
 ## Gate topology: what the snapshot does not contain
@@ -101,11 +101,10 @@ detector never does.
 - **Python grammar is the interpreter's.** A file using syntax newer than the
   running Python, or Python 2 code, is a parse failure and makes the relevant
   checks UNKNOWN. Record `provenance.environment.python` alongside any result.
-- **Test-path classification is by name and directory.** Tests in files that
-  pytest is configured to collect under other names (`python_files`,
-  `testpaths` in `pytest.ini`/`pyproject.toml`) are not seen as tests. Test
-  helpers outside `tests/`/`test/` directories are treated as implementation
-  code. Configuration files are not read.
+- **Test-path classification is by name and directory, extended by pytest
+  configuration.** Files the pytest configuration collects (`python_files`)
+  are treated as tests; test helpers outside `tests/`/`test/` directories that
+  no configuration collects are treated as implementation code.
 - **Test-data classification can hide code.** A non-package `.py` file under
   `fixtures/`, `resources/`, `testdata/`, `test_data/`, `example_scripts/` or
   `snapshots/` is treated as data and not analyzed. A hollow helper placed
@@ -162,6 +161,40 @@ detector never does.
 - ImpossibleBench's other strategies are **not** checked: modifying test
   files (needs history or a reference copy of the tests) and recording call
   state across calls to game stateful tests.
+
+## The collection model (`EC-TESTS-NOT-RUN`)
+
+- **It sees only invocations written down in the repository.** CI systems
+  other than GitHub Actions, tox configuration in `tox.toml` or
+  `[tool.tox]` in `pyproject.toml`, hatch/pdm/poetry scripts, `justfile`s,
+  Docker entrypoints, and anything a developer runs by hand are invisible.
+  When none is found it assumes a plain `pytest` at each configuration root,
+  which may not be what anyone runs.
+- **It unions invocations.** A test run by any one invocation counts as run,
+  including an invocation in a workflow that only fires on a schedule or a
+  manual dispatch, or a tox environment CI never selects. So "runs" means
+  "some command in the repository would run it", not "CI runs it on every
+  pull request".
+- Shell handling is shallow: `cd`, `&&`, `;`, `|`, line continuations, and
+  literal arguments. Shell variables, `${{ }}` expressions, command
+  substitution, loops and functions make an invocation unresolvable; tests
+  that only such an invocation might run become UNKNOWN. `*.sh` scripts are
+  assumed to run from the repository root.
+- `-k` matching uses test, class, module and directory names and marker
+  names, not parametrization IDs or keywords added by plugins; `-k` on a
+  parametrized test is UNKNOWN. `-m` with keyword-argument matching is
+  treated as unparseable.
+- Plugins (`-p NAME`, entry points, `pytest_plugins`) and conftest hooks
+  (`pytest_collection_modifyitems`, `pytest_ignore_collect`,
+  `pytest_collect_file`) can add, remove or skip tests; the hooks are reported
+  as UNKNOWN, plugins are not modeled at all.
+- Conditional skips (`skipif(sys.platform == ...)`, `importorskip`, a skip
+  inside an `if`) are assumed to run somewhere. A test skipped on every
+  platform CI actually uses is reported as run.
+- `xfail` tests that run are counted as run, although a non-strict `xfail`
+  can never fail the build.
+- Only pytest is modeled. For `unittest`, `nose2`, Django's test runner and
+  others, only unconditional skips are evaluated.
 
 ## Things the record itself cannot vouch for
 

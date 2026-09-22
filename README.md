@@ -128,6 +128,34 @@ code as confidential.
   Symlinks are never followed. Files over 4 MiB are not read and are recorded
   as unread.
 
+### Which tests actually run
+
+When there is evidence that pytest is the runner (a pytest configuration, a
+pytest invocation, a `conftest.py`, or test files importing pytest), the
+detector models pytest collection and selection statically:
+
+- **Configuration** is located and parsed as pytest does: `pytest.toml`,
+  `.pytest.toml`, `pytest.ini`, `.pytest.ini`, `pyproject.toml`
+  (`[tool.pytest]` or `[tool.pytest.ini_options]`), `tox.ini` (`[pytest]`),
+  `setup.cfg` (`[tool:pytest]`), first directory upward that has one. It reads
+  `addopts`, `testpaths`, `norecursedirs`, `python_files`, `python_classes`,
+  `python_functions`.
+- **Invocations** are read from GitHub Actions `run:` steps (with
+  `working-directory`, `defaults.run.working-directory`, `cd`, and a literal
+  `PYTEST_ADDOPTS`), `tox.ini` `commands` (with `changedir` and tox
+  substitutions), `noxfile.py` `session.run`, Makefile recipes, and `*.sh`
+  scripts. With none found, a plain `pytest` at each configuration root is
+  assumed.
+- `-k`, `-m` (last one wins, as in pytest), `--deselect`, `--ignore`,
+  `--ignore-glob`, positional paths and node IDs, `--pyargs`, and
+  `collect_ignore`/`collect_ignore_glob` in `conftest.py` are applied.
+
+A test counts as run if **any** invocation collects and selects it and it is
+not unconditionally skipped, so the model errs toward "runs". Tests the model
+says never run are reported by `EC-TESTS-NOT-RUN` and excluded from
+`EC-NO-ASSERTION` and `EC-MOCK-ONLY`; files that the configuration collects
+are treated as test code whatever their name.
+
 JavaScript/TypeScript, Java and C# are inventoried (files, LOC) but not
 analyzed in this version.
 
@@ -168,6 +196,7 @@ special-casing test inputs, among others).
 | `EC-EXIT-BEFORE-ASSERT` | In test code: `sys.exit`, `exit`, `quit`, `os._exit`, `raise SystemExit`, `pytest.exit(returncode=0)` with a success status. Not reported: under `if __name__ == "__main__":`, inside `pytest.raises(SystemExit)` / `assertRaises(SystemExit)`, or with a non-zero literal status. A non-literal status is UNKNOWN. | A process that exits 0 before its assertions run, which a runner or CI reads as success. |
 | `EC-EQUALITY-OVERRIDE` | Anywhere: an `__eq__`/`__ne__` (method, lambda, class attribute, attribute assignment, `setattr`) whose result does not read the other operand, such as `return True`. In test code only, any other `__eq__` is UNKNOWN (a comparison helper whose soundness cannot be judged). A value-object `__eq__` in implementation code that reads the other operand is **not** reported. | An object that equals everything, so every `assert result == expected` passes. |
 | `EC-RUNNER-PATCHED` | In test code: patching reporting machinery (`TestReport`, `CallInfo`, `call_and_report`, unittest `TestResult`, `AssertionError` …) by assignment, `setattr`, `monkeypatch`, or `mock.patch`; writing outcome attributes (`outcome`, `longrepr`, `excinfo`, `exitstatus`, `wasxfail` …) inside reporting hooks; `force_result` in reporting hooks; `pytest_pyfunc_call`/`pytest_runtest_call` returning without calling the test; `TestResult` subclasses that drop failures; `wasSuccessful()` returning a constant. Other attribute writes inside reporting hooks, and any `pytest_report_teststatus` implementation, are UNKNOWN. The same constructs in pytest plugins outside test paths are UNKNOWN. Not reported: the documented `setattr(item, "rep_" + rep.when, rep)` pattern. | A test suite that reports failures as passes. |
+| `EC-TESTS-NOT-RUN` | A test that no invocation found ever runs. FAIL: unconditionally skipped (`@pytest.mark.skip`, `skipif(True)`, `xfail(run=False)`, `unittest.skip`, module-level skip, a skip as the test's first statement), or deselected (`-k`, `-m`, `--deselect`) or ignored (`--ignore`, `--ignore-glob`, `collect_ignore`) in every invocation. UNKNOWN: outside collection scope (`norecursedirs`, `testpaths`, `python_files`, command-line paths), which is often test data; `-k` on parametrized tests; unresolvable invocations; collection hooks; conditional `collect_ignore`. See "Which tests actually run" below. | A test suite that looks large and green while part of it never executes. |
 | `EC-NO-ASSERTION` | A test function (pytest or unittest; not `conftest.py`, not fixtures, not `skip`ped) with no recognized assertion. Recognized: `assert`; calls whose name starts with `assert`; `pytest.raises`/`warns`/`deprecated_call`, `assertRaises…`/`assertWarns…`/`assertLogs`; `pytest.fail`/`self.fail`; `raise AssertionError`; pytester `fnmatch_lines`-family and pexpect `expect`; and calls to functions defined in test paths that themselves (transitively) assert. | A test that passes whenever the code does not crash, so it cannot detect a wrong answer. |
 | `EC-MOCK-ONLY` | A test that creates or injects mocks, asserts, and loads no name other than those mocks, values derived only from them, builtins and mock/pytest library names. Not reported: tests that call real code with a mock and then assert on the mock. | A green test that never reaches the code under test (`m.return_value = 3; assert m() == 3`). |
 | `EC-SPECIAL-CASED` | (a) In implementation code: `if <parameter> == <literal>: return <literal>` in a function that also has a general return path, where the input literal is non-trivial, occurs in test files, and occurs nowhere else outside test files (not in other code, not in docs). (b) Implementation code that reads `PYTEST_CURRENT_TEST` or `PYTEST_VERSION` from the environment (`os.environ.get`, `os.getenv`, `os.environ[...]`, `in os.environ`), reads `sys._called_from_test` (attribute, `hasattr`, `getattr`), or checks for `pytest`/`unittest` in `sys.modules`. The same strings merely present in code (a linter's pattern table) do not count. Test infrastructure (files importing pytest, pytest plugins, noxfile, setup.py) is excluded from (b). | Code that returns the expected answer for the test's input only, or behaves differently under test than in production. |

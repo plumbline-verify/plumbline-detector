@@ -63,6 +63,17 @@ CASES = [
     ("py/runner-bad-hook", "EC-RUNNER-PATCHED", "FAIL", 3),
     ("py/runner-bad-pyfunc", "EC-RUNNER-PATCHED", "FAIL", 1),
     ("py/runner-bad-unittest", "EC-RUNNER-PATCHED", "FAIL", 2),
+    ("py/runner-discrim-nested", "EC-RUNNER-PATCHED", "UNKNOWN", 0),  # hook on a nested pytester session
+    ("py/runner-discrim-nested", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # pytest.fail.Exception is not Exception
+    # EC-TESTS-NOT-RUN
+    ("py/notrun-good", "EC-TESTS-NOT-RUN", "PASS", 0),
+    ("py/notrun-discrim-override", "EC-TESTS-NOT-RUN", "PASS", 0),  # CI runs the slow tests separately
+    ("py/notrun-bad-skip", "EC-TESTS-NOT-RUN", "FAIL", 5),
+    ("py/notrun-bad-deselect", "EC-TESTS-NOT-RUN", "FAIL", 3),
+    ("py/notrun-bad-ignore", "EC-TESTS-NOT-RUN", "FAIL", 2),
+    ("py/notrun-unknown-scope", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
+    ("py/notrun-unknown-invocation", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
+    ("py/notrun-malformed-config", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
     # EC-NO-ASSERTION
     ("py/noassert-good", "EC-NO-ASSERTION", "PASS", 0),
     ("py/noassert-bad", "EC-NO-ASSERTION", "FAIL", 3),
@@ -172,3 +183,34 @@ def test_unread_file_blocks_pass(tmp_path, monkeypatch):
     res = {c["id"]: c for c in analyze(str(tmp_path))["checks"]}
     assert res["EC-NO-ASSERTION"]["verdict"] == "UNKNOWN"
     assert any("size_limit" in u["message"] for u in res["EC-NO-ASSERTION"]["unknowns"])
+
+
+def test_not_run_reasons_are_specific():
+    res = run("py/notrun-bad-deselect")["EC-TESTS-NOT-RUN"]
+    msgs = " | ".join(f["message"] for f in res["findings"])
+    assert "-k 'not overflow'" in msgs and "-m 'not flaky'" in msgs and "--deselect" in msgs
+    res = run("py/notrun-bad-ignore")["EC-TESTS-NOT-RUN"]
+    msgs = " | ".join(f["message"] for f in res["findings"])
+    assert "collect_ignore in tests/conftest.py" in msgs and "--ignore tests/integration" in msgs
+
+
+def test_malformed_pytest_config_reported():
+    res = run("py/notrun-malformed-config")["EC-TESTS-NOT-RUN"]
+    assert any("config unparseable" in u["message"] for u in res["unknowns"])
+
+
+def test_out_of_scope_tests_not_counted_by_no_assertion(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\nnorecursedirs = tests/data\n")
+    (tmp_path / "tests" / "data").mkdir(parents=True)
+    (tmp_path / "tests" / "test_a.py").write_text("def test_a():\n    assert 1 + 1 == 2\n")
+    (tmp_path / "tests" / "data" / "test_input.py").write_text("def test_placeholder():\n    pass\n")
+    res = {c["id"]: c for c in analyze(str(tmp_path))["checks"]}
+    assert res["EC-NO-ASSERTION"]["verdict"] == "PASS"
+    assert res["EC-TESTS-NOT-RUN"]["verdict"] == "UNKNOWN"
+
+
+def test_configured_python_files_become_test_code(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\npython_files = check_*.py\n")
+    (tmp_path / "check_math.py").write_text("def test_math():\n    pass\n")
+    res = {c["id"]: c for c in analyze(str(tmp_path))["checks"]}
+    assert res["EC-NO-ASSERTION"]["verdict"] == "FAIL"

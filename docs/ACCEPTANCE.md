@@ -1,20 +1,20 @@
 # Phase A acceptance record
 
-Detector schema 1.0.0. Environment: CPython 3.13, PyYAML 6.0.3.
+Detector schema 1.1.0 (thirteen checks). Environment: CPython 3.13, PyYAML 6.0.3. Schema 1.0.0 was the first handoff; 1.1.0 added EC-TESTS-NOT-RUN and the pytest collection model (section at the end).
 
 ## Criteria
 
 | # | Criterion | Evidence |
 |---|---|---|
-| 1 | Every Python and GitHub Actions check passes on a known-good fixture, fires on a known-bad fixture, and returns UNKNOWN on absent or unparseable input. | `tests/test_fixtures.py`: a table of fixture → check → expected verdict and exact finding count, with PASS and FAIL cases for all twelve checks; `test_empty_directory_is_unknown` (all twelve); `test_gt_absent_workflows_unknown`; `test_malformed_workflow_never_passes` over six malformed workflow shapes (syntax error, duplicate key, merge key, wrong shape, non-UTF-8, empty file); `test_ec_unparseable_test_file_unknown`; `test_ec_no_tests_unknown`; `test_unread_file_blocks_pass`. |
+| 1 | Every Python and GitHub Actions check passes on a known-good fixture, fires on a known-bad fixture, and returns UNKNOWN on absent or unparseable input. | `tests/test_fixtures.py`: a table of fixture → check → expected verdict and exact finding count, with PASS and FAIL cases for every check (a meta-test fails if a check lacks either); `test_empty_directory_is_unknown` (all checks); `test_gt_absent_workflows_unknown`; `test_malformed_workflow_never_passes` over six malformed workflow shapes (syntax error, duplicate key, merge key, wrong shape, non-UTF-8, empty file); `test_ec_unparseable_test_file_unknown`; `test_ec_no_tests_unknown`; `test_unread_file_blocks_pass`. |
 | 2 | EC-EQUALITY-OVERRIDE discrimination: a value-object `__eq__` does not fire. | `fixtures/py/eq-good` (a `Money` value object with a field-comparing `__eq__`/`__ne__` in `pkg/`) is PASS with both definitions examined; `fixtures/py/eq-bad-impl` (an always-true `__eq__` in `pkg/`) is FAIL. `test_equality_discrimination_value_object_outside_tests`. |
 | 3 | Two runs over identical input give byte-identical output. | `test_two_runs_byte_identical`, `test_location_independent` (same content at a different path gives the same record). Also checked on all seven real repositories below: two CLI runs each, compared with `cmp`, all identical. |
-| 4 | Schema versioned and documented; any check change bumps the version. | `schema/record.schema.json` (validated in `test_record_validates_against_schema`); README "Output record". `tests/test_versioning.py` pins `SCHEMA_VERSION` to a SHA-256 fingerprint of all check-defining source; editing any check without bumping the version fails the suite. During development this test failed each time a check changed, until the (still unreleased) 1.0.0 entry was re-pinned. |
+| 4 | Schema versioned and documented; any check change bumps the version. | `schema/record.schema.json` (validated in `test_record_validates_against_schema`); README "Output record". `tests/test_versioning.py` pins `SCHEMA_VERSION` to a SHA-256 fingerprint of all check-defining source; editing any check without bumping the version fails the suite. During development this test failed each time a check changed. Adding EC-TESTS-NOT-RUN after the 1.0.0 handoff bumped the schema to 1.1.0 and appended a new fingerprint; the 1.0.0 entry was left unchanged. |
 | 5 | End-to-end on at least three real public repositories, with findings and false positives reported. | Seven repositories, below. |
 | 6 | LIMITATIONS.md. | `LIMITATIONS.md`. |
 | 7 | README with install, usage, every check and the failure it prevents. | `README.md`. |
 
-Test suite: `python -m pytest` → 137 passed (including the two spelling-tool tests, which need hunspell). `tools/check_us_spelling.py` → OK.
+Test suite: `python -m pytest` → 162 passed (including the two spelling-tool tests, which need hunspell). `tools/check_us_spelling.py` → OK.
 
 ## Real-repository runs
 
@@ -32,7 +32,7 @@ on, or sent to any of these projects.
 | astral-sh/ruff | caf021af3e5c | Rust | 971,961 | 263 (+2,626 test-data files) | 22 |
 | vitejs/vite | 1544bb1b7ac9 | TypeScript | 95,225 | 0 | 13 |
 
-Verdicts (finding count in parentheses, `uN` = N unknown locations):
+Verdicts under schema 1.1.0 (finding count in parentheses, `uN` = N unknown locations). The triage below was done on the 1.0.0 run; where 1.1.0 changed a number, the 1.1.0 section at the end says so.
 
 | Check | requests | flask | httpx | pydantic | pytest | ruff | vite |
 |---|---|---|---|---|---|---|---|
@@ -43,8 +43,9 @@ Verdicts (finding count in parentheses, `uN` = N unknown locations):
 | GT-NO-GATE | FAIL (1) | FAIL (1) | FAIL (1) | FAIL (1) | FAIL (1) | FAIL (1) | FAIL (1) |
 | EC-EXIT-BEFORE-ASSERT | PASS | PASS | PASS | PASS | PASS | UNKNOWN u3 | UNKNOWN |
 | EC-EQUALITY-OVERRIDE | PASS | PASS | PASS | FAIL (2) u18 | UNKNOWN u5 | UNKNOWN u31 | UNKNOWN |
-| EC-RUNNER-PATCHED | PASS | PASS | PASS | PASS | UNKNOWN u47 | UNKNOWN u3 | UNKNOWN |
-| EC-NO-ASSERTION | FAIL (10) | FAIL (1) | FAIL (2) | FAIL (168) | FAIL (57) | FAIL (7) u3 | UNKNOWN |
+| EC-RUNNER-PATCHED | PASS | PASS | PASS | PASS | UNKNOWN u49 | UNKNOWN u3 | UNKNOWN |
+| EC-TESTS-NOT-RUN | FAIL (1) | PASS | PASS | FAIL (3) u1 | FAIL (3) u59 | UNKNOWN u7 | UNKNOWN |
+| EC-NO-ASSERTION | FAIL (10) | FAIL (1) | FAIL (2) | FAIL (168) | FAIL (27) | FAIL (1) u3 | UNKNOWN |
 | EC-MOCK-ONLY | PASS | PASS | PASS | PASS | PASS | UNKNOWN u3 | UNKNOWN |
 | EC-SPECIAL-CASED | PASS | PASS | PASS | PASS | PASS | UNKNOWN u31 | UNKNOWN |
 | EC-ASSERTION-NONSTANDARD | PASS | PASS | PASS | FAIL (8) | FAIL (1) | FAIL (3) u3 | UNKNOWN |
@@ -187,3 +188,51 @@ in LIMITATIONS.md.
   has not been tuned on.
 - None of the seven is expected to contain deliberate tampering, so this run
   says nothing about recall against an adversary.
+
+## Schema 1.1.0: which tests actually run
+
+Added: the pytest collection model and `EC-TESTS-NOT-RUN`. Re-run on the
+same seven commits; two runs per repository, byte-identical.
+
+- **EC-TESTS-NOT-RUN findings, all reviewed, all true positives:** requests
+  (1): `test_request_recovery`, `@pytest.mark.skip` ("fails
+  non-deterministically under pytest-xdist"). pydantic (3 groups, 7 tests):
+  `@pytest.mark.skip` tests in `tests/test_main.py` (5, "not implemented"),
+  `tests/test_generics.py` and `tests/test_computed_fields.py`. pytest (3 groups,
+  4 tests): `@pytest.mark.skip` in `testing/acceptance_test.py` ("Test is not
+  isolated") and `testing/test_warnings.py` (2), and
+  `@pytest.mark.xfail(run=False)` in `testing/_py/test_local.py`. These are
+  tests that are present, counted, and never executed.
+- **UNKNOWNs:** pytest (59): 54 are test files under
+  `testing/example_scripts/` (excluded by `norecursedirs`) or outside
+  `testpaths`, which are pytest's own test inputs; 5 are conftest collection
+  hooks. pydantic (1): a Makefile invocation with shell variables. ruff (7):
+  four files outside any collection root (two lint fixtures, one
+  completion-evaluation input, one benchmark script) and three parse
+  failures.
+- **Effect on EC-NO-ASSERTION:** tests outside collection scope are no longer
+  counted. pytest went from 57 findings to 27 (the 27 in
+  `testing/example_scripts/` and 4 in `doc/` are gone; the `python_files`
+  setting added `testing/python/*.py` as test code). ruff went from 7 to 1.
+  Other repositories unchanged.
+- **Detector defects found in this run and fixed** (each with a fixture):
+  - pytest's main tox command, `{env:_PYTEST_TOX_COVERAGE_RUN:} pytest
+    {posargs:{env:_PYTEST_TOX_DEFAULT_POSARGS:}}`, was not recognized
+    (nested tox substitutions), and `changedir` was ignored; every pytest test
+    was reported as outside collection scope. Tox substitutions are now
+    resolved innermost-first.
+  - Any `-p` plugin flag, and `--pyargs`, made an invocation unresolvable;
+    and one unresolvable invocation marked every test in the repository as
+    run. Now `-p` is followed, `--pyargs` names are resolved to paths, and
+    an unresolvable invocation turns only the otherwise-unrun tests into
+    UNKNOWN.
+  - Once `testing/python/*.py` became test code, two new FAILs appeared in
+    pytest, both detector errors: a `pytest_pyfunc_call` hook defined inside
+    a test on a plugin registered with a nested pytester session was treated
+    as patching the real session (now UNKNOWN), and `except
+    pytest.fail.Exception` was read as `except Exception` because only the
+    last name component was compared (now exact names). Fixture
+    `runner-discrim-nested` covers both.
+- **Not measured:** how often "runs" is wrong because an invocation the
+  model accepts is never actually executed by CI (see LIMITATIONS, "It
+  unions invocations").

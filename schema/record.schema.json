@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "plumbline-detector/record/1.0.0",
+  "$id": "plumbline-detector/record/1.1.0",
   "title": "Plumbline detector record",
   "description": "One record per repository snapshot. schema_version changes whenever the record format or the semantics of any check change; provenance.ruleset_fingerprint identifies the exact check code.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "tool", "provenance", "repo", "inventory", "summary", "checks"],
   "properties": {
-    "schema_version": {"const": "1.0.0"},
+    "schema_version": {"const": "1.1.0"},
     "tool": {
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
       "properties": {"name": {"const": "plumbline-detector"}, "version": {"type": "string"}}

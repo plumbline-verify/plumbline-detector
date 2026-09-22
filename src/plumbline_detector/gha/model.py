@@ -86,6 +86,8 @@ class Step:
     continue_on_error: str | None  # raw value
     coe_line: int | None
     texts: list[str]  # every string value in the step, for reference scans
+    working_directory: str | None = None
+    env: dict = field(default_factory=dict)  # name -> literal string value
 
 
 @dataclass
@@ -104,6 +106,8 @@ class Job:
     has_matrix: bool
     raw_texts: list[str]
     triggers: frozenset = frozenset()
+    run_working_directory: str | None = None  # defaults.run.working-directory
+    env: dict = field(default_factory=dict)
 
     @property
     def display(self) -> str:
@@ -118,6 +122,8 @@ class Workflow:
     path: str
     triggers: set[str]
     jobs: dict[str, Job]
+    run_working_directory: str | None = None
+    env: dict = field(default_factory=dict)
 
     @property
     def pr_triggered(self) -> bool:
@@ -190,7 +196,26 @@ def _parse_step(i, raw, path, issues) -> Step | None:
         continue_on_error=_scalar(raw.get("continue-on-error"), "continue-on-error", path, issues),
         coe_line=raw.key_lines.get("continue-on-error"),
         texts=_strings(raw, []),
+        working_directory=_opt_str(raw.get("working-directory")),
+        env=_env(raw.get("env")),
     )
+
+
+def _opt_str(v):
+    return str(v) if isinstance(v, Y.YStr) else None
+
+
+def _env(v) -> dict:
+    """Literal environment entries only; non-scalar values are dropped."""
+    if not isinstance(v, Y.YMap):
+        return {}
+    return {k: str(x) for k, x in v.items() if isinstance(x, Y.YStr)}
+
+
+def _defaults_wd(raw) -> str | None:
+    d = raw.get("defaults") if isinstance(raw, Y.YMap) else None
+    run = d.get("run") if isinstance(d, Y.YMap) else None
+    return _opt_str(run.get("working-directory")) if isinstance(run, Y.YMap) else None
 
 
 def _parse_job(wf_path, job_id, raw, issues) -> Job | None:
@@ -233,6 +258,8 @@ def _parse_job(wf_path, job_id, raw, issues) -> Job | None:
         coe_line=raw.key_lines.get("continue-on-error"),
         has_matrix=has_matrix,
         raw_texts=_strings(raw, []),
+        run_working_directory=_defaults_wd(raw),
+        env=_env(raw.get("env")),
     )
 
 
@@ -279,7 +306,7 @@ def build(snap) -> GHAModel:
                     if n not in jobs:
                         m.issues.append(Location(p, job.line, f"job {job.id!r} needs unknown job {n!r}"))
         del before
-        m.workflows[p] = Workflow(path=p, triggers=triggers, jobs=jobs)
+        m.workflows[p] = Workflow(path=p, triggers=triggers, jobs=jobs, run_working_directory=_defaults_wd(doc), env=_env(doc.get("env")))
     return m
 
 
