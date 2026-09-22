@@ -5,8 +5,10 @@ A word is flagged as a British spelling when all of these hold:
   * it has at least five letters,
   * en_US suggests a single word, accepted by en_US, one edit away, with the
     same first and last letter, and either
-      - en_GB rejects that suggestion (a strict regional pair:
-        `colour`/`color`, `cancelled`/`canceled`), or
+      - en_GB rejects that suggestion (a strict regional pair), the
+        suggestion is the word with one letter dropped, and that letter is
+        a `u`, an `e`, or half of a doubled letter (`colour`, `judgement`,
+        `cancelled`; not `linters`/`liters`), or
       - the edit is s->z or c->s (`organise`/`organize`,
         `licence`/`license`), which en_GB's Oxford spellings accept both ways.
 No word list is involved: every judgment comes from the two dictionaries
@@ -76,6 +78,19 @@ def dist(a, b):
     return prev[-1]
 
 
+def _regional_deletion_ok(a, b):
+    """True if b is a with one letter deleted and that letter is a
+    regional-variant deletion (u, e, or one of a doubled pair)."""
+    if len(a) != len(b) + 1:
+        return False  # substitutions are handled by the s->z / c->s rule only
+    for i in range(len(a)):
+        if a[:i] + a[i + 1:] == b:
+            ch = a[i]
+            doubled = (i > 0 and a[i - 1] == ch) or (i + 1 < len(a) and a[i + 1] == ch)
+            return ch in "ue" or doubled
+    return True
+
+
 def _sub(a, b):
     """The (from, to) characters if b is a one-character substitution of a."""
     if len(a) != len(b):
@@ -107,7 +122,8 @@ def main():
         ]
         cands = [x for x in cands if x not in hunspell_list([x], "en_US")]
         for x in cands:
-            if x in hunspell_list([x], "en_GB") or _sub(w, x.lower()) in (("s", "z"), ("c", "s")):
+            pair = x in hunspell_list([x], "en_GB") and _regional_deletion_ok(w, x.lower())
+            if pair or _sub(w, x.lower()) in (("s", "z"), ("c", "s")):
                 flagged[w] = x
                 break
     if flagged:
