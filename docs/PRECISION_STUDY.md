@@ -269,3 +269,33 @@ Observation only: none of these was reported to the projects.
 4. The rarely-firing checks remain unmeasurable at this sample size: across
    both rounds, EC-EXIT-BEFORE-ASSERT has produced 8 findings and none was a
    true positive.
+
+## Round 3 protocol (fixed before any run; committed before results)
+
+**Detector under test.** Commit `ea36d78`, schema 1.3.0, ruleset fingerprint
+`sha256:47147ca9f073da2cc48d5265613488eca4294726d7de9ff5ad9471b5f79d6e64` (read from `fingerprint.json` at that commit). No check code changes
+between the first round-3 run and the reported numbers.
+
+**Repositories.** None used in development, acceptance, round 1 or round 2.
+If a repository cannot be cloned it is reported missing, not replaced.
+
+Python (20): pallets/quart, encode/httpcore, aio-libs/yarl,
+aio-libs/multidict, sqlalchemy/alembic, celery/kombu,
+marshmallow-code/webargs, python-attrs/cattrs, benoitc/gunicorn,
+bottlepy/bottle, falconry/falcon, tornadoweb/tornado, Pylons/pyramid,
+PyCQA/pyflakes, PyCQA/pycodestyle, PyCQA/bandit, python-poetry/poetry-core,
+Textualize/textual, pytest-dev/pytest-xdist, jazzband/django-debug-toolbar.
+
+JavaScript / TypeScript (10): koajs/koa, fastify/fastify, date-fns/date-fns,
+sindresorhus/got, lodash/lodash, pinojs/pino, remix-run/react-router,
+TanStack/query, colinhacks/zod, reduxjs/redux-toolkit.
+
+This is the first measurement of the `-JS` checks. The JS/TS development
+set (express, vue core, axios, chalk, vite) is excluded.
+
+**Sampling, labels, labelers, audit.** As in rounds 1 and 2: findings pooled
+per check across all thirty repositories; all labeled if 40 or fewer, else
+40 at random (seed 20260922); TP / FP-detector / FP-scope against the README
+definitions; independent labeling agents without access to the detector code
+or earlier rounds; the author audits a seeded random 20% (seed 20260923).
+GT-NO-GATE is not labeled.
