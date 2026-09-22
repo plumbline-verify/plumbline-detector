@@ -98,7 +98,7 @@ away.
 
 ### Where the false positives came from
 
-All 48 false positives fall into nine causes:
+The 48 false positives come from nine recurring causes and four single cases:
 
 | Cause | Check | FP |
 |---|---|---|
@@ -137,8 +137,8 @@ lower the figures above, not raise them.
   the loop body's only statement is `assert True`.
 - SQLAlchemy runs its whole test step on PyPy 3.11 with `continue-on-error`,
   so failures there do not fail the job.
-- Unconditionally skipped tests in scrapy (7), poetry (3), httpie (3), click,
-  aiohttp, celery and mypy.
+- Unconditionally skipped tests (counted in tests, from the 17 TP findings):
+  scrapy 9, aiohttp 7, celery 3, httpie 3, poetry 3, mypy 1.
 
 Observation only: none of these was reported to the projects.
 
