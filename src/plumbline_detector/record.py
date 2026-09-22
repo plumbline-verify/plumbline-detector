@@ -48,6 +48,7 @@ FINGERPRINT_MODULES = [
     "gha/yamlnodes.py",
     "gha/model.py",
     "gha/checks.py",
+    "gha/expr.py",
     "py/common.py",
     "py/assertions.py",
     "py/checks.py",

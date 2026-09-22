@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+addopts = "-m 'not stress'"
+markers = ["stress: long running"]
+
+[tool.tox.env_run_base]
+commands = [["pytest", {replace = "posargs", default = [], extend = true}]]
+
+[tool.tox.env.stress]
+commands = [[
+    "pytest", "-m", "stress",
+    "--basetemp={env_tmp_dir}",
+    "--override-ini=addopts=",
+]]

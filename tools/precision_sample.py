@@ -5,7 +5,7 @@ label all if there are 40 or fewer, else draw 40 with random.Random(SEED).
 Each sampled item carries the source around its location so a labeler does
 not need the repository. Output: one JSON object per line.
 
-Usage: python tools/precision_sample.py --records DIR --repos DIR --out sample.jsonl
+Usage: `python tools/precision_sample.py --records DIR --repos DIR --out sample.jsonl`
 """
 
 import argparse

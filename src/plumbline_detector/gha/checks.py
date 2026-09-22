@@ -9,6 +9,7 @@ A skipped required job therefore satisfies the gate.
 from __future__ import annotations
 
 from ..model import CheckResult, Location
+from . import expr as X
 from . import model as M
 
 NO_WORKFLOWS = "no GitHub Actions workflow files (.github/workflows/*.yml|yaml)"
@@ -122,51 +123,58 @@ def gt_continue_on_error(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
         return r
     examined = 0
 
-    def classify(raw):
+    def classify(raw, job):
+        """(kind, detail): kind None (never true), 'always', 'conditional'
+        (true on some matrix leg), 'unevaluable', or 'unrecognized'."""
         v = str(raw).strip()
         if v == "false":
-            return None
+            return None, None
         if v == "true":
-            return "always"
-        if v.startswith("${{") and v.endswith("}}"):
-            return "conditional"
-        return "unrecognized"
+            return "always", None
+        if not (v.startswith("${{") and v.endswith("}}")):
+            return "unrecognized", None
+        expr = v[3:-2]
+        try:
+            true_legs = [leg for leg in X.legs(job.matrix) if X._truthy(X.evaluate(expr, leg))]
+        except (X.Unevaluable, ValueError, TypeError):
+            return "unevaluable", None
+        if not true_legs:
+            return None, None
+        return "conditional", {"true_on_legs": len(true_legs), "example_leg": {k: true_legs[0][k] for k in sorted(true_legs[0])}}
+
+    def report(path, line, job, kind, detail, scope, step=None):
+        where = f"job {job.id!r}" + (f" step {step.index}" if step is not None else "")
+        if kind == "unrecognized":
+            r.unknowns.append(Location(path, line, f"{where}: unrecognized continue-on-error value"))
+        elif kind == "unevaluable":
+            r.unknowns.append(Location(path, line, f"{where}: continue-on-error expression not evaluable against the matrix"))
+        else:
+            what = "failing tests leave the job green" if scope == "step" else "its failure does not fail the run"
+            extra = f" on {detail['true_on_legs']} matrix leg(s)" if detail else ""
+            d = {"job": job.id, "scope": scope, "kind": kind}
+            if step is not None:
+                d["step"] = step.index
+            if detail:
+                d.update(detail)
+            r.findings.append(Location(path, line, f"test-running {where} has continue-on-error ({kind}{extra}): {what}", d))
 
     for wf in gm.workflows.values():
         for job in wf.jobs.values():
             status = M.job_test_status(gm, job)
             if job.continue_on_error is not None:
-                kind = classify(job.continue_on_error)
                 examined += 1
-                if kind == "unrecognized":
-                    r.unknowns.append(Location(wf.path, job.coe_line, f"job {job.id!r}: unrecognized continue-on-error value"))
-                elif kind and status == "yes":
-                    r.findings.append(
-                        Location(
-                            wf.path,
-                            job.coe_line,
-                            f"test-running job {job.id!r} has continue-on-error ({kind}): its failure does not fail the run",
-                            {"job": job.id, "scope": "job", "kind": kind},
-                        )
-                    )
+                kind, detail = classify(job.continue_on_error, job)
+                if kind in ("unrecognized", "unevaluable") or (kind and status == "yes"):
+                    report(wf.path, job.coe_line, job, kind, detail, "job")
                 elif kind and status == "unknown":
                     r.unknowns.append(Location(wf.path, job.coe_line, f"job {job.id!r} has continue-on-error; cannot tell whether it runs tests"))
             for step in job.steps:
                 if step.continue_on_error is None:
                     continue
                 examined += 1
-                kind = classify(step.continue_on_error)
-                if kind == "unrecognized":
-                    r.unknowns.append(Location(wf.path, step.coe_line, f"job {job.id!r} step {step.index}: unrecognized continue-on-error value"))
-                elif kind and M.step_runs_tests(step):
-                    r.findings.append(
-                        Location(
-                            wf.path,
-                            step.coe_line,
-                            f"test step in job {job.id!r} has continue-on-error ({kind}): failing tests leave the job green",
-                            {"job": job.id, "scope": "step", "step": step.index, "kind": kind},
-                        )
-                    )
+                kind, detail = classify(step.continue_on_error, job)
+                if kind in ("unrecognized",) or (kind and M.step_runs_tests(step)):
+                    report(wf.path, step.coe_line, job, kind, detail, "step", step)
     r.stats = {"continue_on_error_sites": examined}
     return r
 

@@ -1,0 +1,12 @@
+on: pull_request
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+        include:
+          - python: "pypy-3.11"
+    steps:
+      - run: pytest
+        continue-on-error: ${{ matrix.python == 'pypy-3.11' }}

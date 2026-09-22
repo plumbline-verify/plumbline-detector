@@ -25,6 +25,9 @@ CASES = [
     ("gha/coe-bad-step", "GT-CONTINUE-ON-ERROR", "FAIL", 1),
     ("gha/coe-bad-job", "GT-CONTINUE-ON-ERROR", "FAIL", 1),
     ("gha/coe-unrecognized", "GT-CONTINUE-ON-ERROR", "UNKNOWN", 0),
+    ("gha/coe-discrim-matrix", "GT-CONTINUE-ON-ERROR", "PASS", 0),  # no matrix leg makes it true
+    ("gha/coe-bad-include", "GT-CONTINUE-ON-ERROR", "FAIL", 1),  # an include leg makes it true
+    ("gha/coe-unknown-expr", "GT-CONTINUE-ON-ERROR", "UNKNOWN", 0),  # non-matrix context
     # GT-AGGREGATOR-PERMISSIVE
     ("gha/agg-good-allsgreen", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
     ("gha/agg-good-explicit", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
@@ -35,6 +38,7 @@ CASES = [
     ("gha/agg-bad-unverified", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-bad-partial", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-absent", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),
+    ("gha/agg-discrim-release", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),  # a release gate is not an aggregator
     # GT-NO-PROPAGATION
     ("gha/prop-good", "GT-NO-PROPAGATION", "PASS", 0),
     ("gha/prop-bad-unwired", "GT-NO-PROPAGATION", "FAIL", 1),
@@ -51,12 +55,16 @@ CASES = [
     ("py/exit-bad", "EC-EXIT-BEFORE-ASSERT", "FAIL", 1),
     ("py/exit-bad-os", "EC-EXIT-BEFORE-ASSERT", "FAIL", 1),
     ("py/exit-unknown", "EC-EXIT-BEFORE-ASSERT", "UNKNOWN", 0),
+    ("py/exit-discrim-caught", "EC-EXIT-BEFORE-ASSERT", "PASS", 0),  # caught locally
+    ("py/exit-unknown-double", "EC-EXIT-BEFORE-ASSERT", "UNKNOWN", 0),  # inside a test double
     # EC-EQUALITY-OVERRIDE (eq-good is the required discrimination case)
     ("py/eq-good", "EC-EQUALITY-OVERRIDE", "PASS", 0),
     ("py/eq-bad-impl", "EC-EQUALITY-OVERRIDE", "FAIL", 1),
     ("py/eq-bad-test", "EC-EQUALITY-OVERRIDE", "FAIL", 2),
     ("py/eq-bad-lambda", "EC-EQUALITY-OVERRIDE", "FAIL", 1),
     ("py/eq-unknown-testhelper", "EC-EQUALITY-OVERRIDE", "UNKNOWN", 0),
+    ("py/eq-unknown-stateful", "EC-EQUALITY-OVERRIDE", "UNKNOWN", 0),  # ignores other, but not constant
+    ("py/eq-unknown-stateful2", "EC-EQUALITY-OVERRIDE", "UNKNOWN", 0),  # different literals chosen by state
     # EC-RUNNER-PATCHED
     ("py/runner-good", "EC-RUNNER-PATCHED", "PASS", 0),
     ("py/runner-bad", "EC-RUNNER-PATCHED", "FAIL", 2),
@@ -74,21 +82,26 @@ CASES = [
     ("py/notrun-unknown-scope", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
     ("py/notrun-unknown-invocation", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
     ("py/notrun-malformed-config", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),
+    ("py/notrun-discrim-toxtoml", "EC-TESTS-NOT-RUN", "PASS", 0),  # [tool.tox] env runs the stress tests
     # EC-NO-ASSERTION
     ("py/noassert-good", "EC-NO-ASSERTION", "PASS", 0),
     ("py/noassert-bad", "EC-NO-ASSERTION", "FAIL", 3),
+    ("py/noassert-discrim-helpers", "EC-NO-ASSERTION", "PASS", 0),  # decorator, support-module helper, test calling a test
     # EC-MOCK-ONLY
     ("py/mock-good", "EC-MOCK-ONLY", "PASS", 0),
     ("py/mock-bad", "EC-MOCK-ONLY", "FAIL", 2),
+    ("py/mock-discrim-attrassign", "EC-MOCK-ONLY", "PASS", 0),  # real module attribute assigned in finally
     # EC-SPECIAL-CASED
     ("py/special-good", "EC-SPECIAL-CASED", "PASS", 0),
     ("py/special-bad", "EC-SPECIAL-CASED", "FAIL", 1),
     ("py/special-bad-probe", "EC-SPECIAL-CASED", "FAIL", 2),
     ("py/special-bad-probe2", "EC-SPECIAL-CASED", "FAIL", 2),
+    ("py/special-discrim-seqlit", "EC-SPECIAL-CASED", "PASS", 0),  # the sequence literal also appears in code
     ("py/special-discrim-table", "EC-SPECIAL-CASED", "PASS", 0),  # strings in a table are not a probe
     # EC-ASSERTION-NONSTANDARD
     ("py/nonstd-good", "EC-ASSERTION-NONSTANDARD", "PASS", 0),
     ("py/nonstd-bad", "EC-ASSERTION-NONSTANDARD", "FAIL", 9),
+    ("py/nonstd-discrim-r1", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # caching identity, recording handler, else-raise, later raise
 ]
 
 GT = [c for c in CHECK_ORDER if c.startswith("GT-")]

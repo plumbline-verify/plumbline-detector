@@ -53,7 +53,8 @@ VALUE_OPTS = {
 }
 # -p (load a plugin) is not unbounding: plugins that change collection are
 # a documented blind spot, not something every -p should hide behind.
-UNBOUNDING_OPTS = {"-c", "-o", "--override-ini", "--rootdir", "--config-file"}
+UNBOUNDING_OPTS = {"-c", "--rootdir", "--config-file"}
+MODELED_INI = {"addopts", "python_files", "python_classes", "python_functions", "testpaths", "norecursedirs"}
 NON_RUN_OPTS = {"--co", "--collect-only", "--setup-plan", "--fixtures", "--markers", "--version", "-h", "--help", "--fixtures-per-test"}
 WRAPPER_TOKENS = {"uv", "run", "poetry", "pdm", "hatch", "pipenv", "rye", "xvfb-run", "-a", "timeout", "sudo", "env", "time", "exec", "--", "-E", "--locked", "--frozen", "--no-sync", "--active"}
 PYTHON_RE = re.compile(r"^(.*/)?(python|python3|python3\.\d+|py|pypy3?)(\.exe)?$")
@@ -484,10 +485,31 @@ def invocations_from_script(script, source, line, cwd, env_addopts=None):
                     extra = shlex.split(env_addopts)
                 except ValueError:
                     args = None
-        if args is not None and any(UNRESOLVED_RE.search(a) for a in args):
+        if args is not None and not _args_resolvable(args):
             args = None
         out.append(Invocation(source, line, cwd, args, extra))
     return out
+
+
+# Options whose value affects which tests are selected or collected.
+SELECTION_OPTS = {"-k", "-m", "-c", "-o", "--override-ini", "--deselect", "--ignore", "--ignore-glob", "--rootdir", "--config-file", "--confcutdir"}
+
+
+def _args_resolvable(args) -> bool:
+    """An unresolved token is harmless only as the value of an option that
+    does not affect selection (--basetemp={x}, --cov=$PKG, -n $CPUS)."""
+    for i, a in enumerate(args):
+        if not UNRESOLVED_RE.search(a):
+            continue
+        if a.startswith("--") and "=" in a:
+            opt = a.split("=", 1)[0]
+            if opt in VALUE_OPTS and opt not in SELECTION_OPTS:
+                continue
+        prev = args[i - 1] if i else None
+        if prev in VALUE_OPTS and prev not in SELECTION_OPTS:
+            continue
+        return False
+    return True
 
 
 def _gha_invocations(gm):
@@ -559,6 +581,54 @@ def _tox_invocations(snap):
     return out
 
 
+def _tox_toml_command(cmd):
+    """One tox-TOML command (a list of strings and replace-tables) to a
+    shell-like string, or None if it cannot be rendered."""
+    words = []
+    if not isinstance(cmd, list):
+        return None
+    for w in cmd:
+        if isinstance(w, str):
+            words.append(_tox_substitute(w))
+        elif isinstance(w, dict) and w.get("replace") in ("posargs", "env"):
+            d = w.get("default", [] if w.get("replace") == "posargs" else "")
+            words += [str(x) for x in (d if isinstance(d, list) else [d])]
+        else:
+            words.append("$UNRESOLVED")
+    return " ".join(shlex.quote(x) if "$UNRESOLVED" not in x else x for x in words)
+
+
+def _tox_toml_invocations(snap):
+    out = []
+    for p in snap.paths():
+        name = posixpath.basename(p)
+        if name not in ("tox.toml", "pyproject.toml"):
+            continue
+        try:
+            doc = tomllib.loads(snap.files[p].decode("utf-8"))
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+            continue
+        root = doc if name == "tox.toml" else doc.get("tool", {}).get("tox", {})
+        if not isinstance(root, dict) or not root:
+            continue
+        d = posixpath.dirname(p)
+        envs = [root.get("env_run_base", {})] + list((root.get("env") or {}).values())
+        for env in envs:
+            if not isinstance(env, dict):
+                continue
+            cwd = d
+            cd = env.get("change_dir")
+            if isinstance(cd, str):
+                cwd = _join(d, _tox_substitute(cd))
+            elif cd is not None:
+                cwd = None
+            for cmd in env.get("commands", []) or []:
+                text = _tox_toml_command(cmd)
+                if text:
+                    out += invocations_from_script(text, p, None, cwd)
+    return out
+
+
 def _nox_invocations(pm: PyModel):
     out = []
     for pf in pm.files.values():
@@ -619,6 +689,7 @@ class Collection:
     issues: list  # Location, unknowns
     pytest_evidence: bool
     collected_files: set
+    resolved_invocations: int = 0
 
 
 def _conftest_ignores(pm: PyModel, issues):
@@ -671,6 +742,23 @@ def _fnmatch_ex(pattern, path):
     return fnmatch.fnmatch("/" + path, "*/" + pattern.lstrip("/"))
 
 
+def _ini_overrides(tokens):
+    """-o/--override-ini name=value pairs from an argument list."""
+    out = {}
+    for i, t in enumerate(tokens):
+        val = None
+        if t in ("-o", "--override-ini") and i + 1 < len(tokens):
+            val = tokens[i + 1]
+        elif t.startswith("--override-ini="):
+            val = t.split("=", 1)[1]
+        elif t.startswith("-o") and len(t) > 2:
+            val = t[2:]
+        if val and "=" in val:
+            k, v = val.split("=", 1)
+            out[k.strip()] = v
+    return out
+
+
 def _parse_args(tokens, snap_paths, cwd):
     """Split pytest arguments into options and positional args."""
     opts = {"k": None, "m": None, "deselect": [], "ignore": [], "ignore_glob": [], "unbounded": None, "pyargs": False}
@@ -718,7 +806,7 @@ def _parse_args(tokens, snap_paths, cwd):
 def build(snap, pm: PyModel, gm) -> Collection:
     issues: list[Location] = []
     configs = find_configs(snap, issues)
-    invs = _gha_invocations(gm) + _tox_invocations(snap) + _nox_invocations(pm) + _make_and_sh_invocations(snap)
+    invs = _gha_invocations(gm) + _tox_invocations(snap) + _tox_toml_invocations(snap) + _nox_invocations(pm) + _make_and_sh_invocations(snap)
     pytest_evidence = bool(invs) or any(not c.fallback_only for c in configs.values()) or any(
         posixpath.basename(p) == "conftest.py" for p in pm.files
     ) or any("pytest" in pf.imports.values() or any(v.startswith("pytest.") for v in pf.imports.values()) for pf in pm.tests())
@@ -749,6 +837,7 @@ def build(snap, pm: PyModel, gm) -> Collection:
     reasons: dict[int, list] = {i: [] for i in range(len(items))}
     collected_files: set = set()
     unresolved: list = []
+    resolved = 0
     for inv in invs:
         if inv.args is None or inv.cwd is None:
             unresolved.append(inv)
@@ -763,6 +852,9 @@ def build(snap, pm: PyModel, gm) -> Collection:
         if cfg.broken:
             unresolved.append(inv)
             continue
+        overrides = _ini_overrides(inv.extra_addopts + inv.args)
+        if overrides:
+            cfg = PytestConfig(cfg.dir, cfg.file, {**cfg.values, **{k: v for k, v in overrides.items() if k in MODELED_INI}})
         addopts = cfg.args("addopts", [])
         if addopts is None:
             issues.append(Location(cfg.file or "", None, "addopts not parseable"))
@@ -795,6 +887,7 @@ def build(snap, pm: PyModel, gm) -> Collection:
                     roots.append((base, []))
         else:
             roots = [(inv.cwd, [])]
+        resolved += 1
         kfn = _parse_expr(opts["k"]) if opts["k"] else None
         mfn = _parse_expr(opts["m"]) if opts["m"] else None
         if (opts["k"] and kfn is None) or (opts["m"] and mfn is None):
@@ -826,11 +919,21 @@ def build(snap, pm: PyModel, gm) -> Collection:
         kinds = reasons[idx]
         # the most specific explanation: skipped > deselected > ignored > scope
         kinds.sort(key=lambda r: SPECIFICITY.index(r[0]))
-        best = kinds[0] if kinds else ("scope", "no invocation collects it", None)
-        if unresolved and best[0] != "skipped":
+        if kinds:
+            best = kinds[0]
+        else:
+            it = items[idx]
+            cfg = config_for(posixpath.dirname(it.file), configs)
+            pyfiles = cfg.args("python_files", DEFAULT_PYTHON_FILES) or DEFAULT_PYTHON_FILES
+            if not any(_fnmatch_ex(p, it.file) for p in pyfiles):
+                # config-level: no invocation collects it unless it names the file
+                best = ("scope", "file name does not match python_files", None)
+            else:
+                best = ("scope", "no invocation collects it", None)
+        if unresolved and best[0] != "skipped" and not (best[0] == "scope" and "python_files" in best[1]):
             best = ("unresolved", f"excluded by every resolved invocation ({best[1]}), but an unresolved invocation may run it", best[2])
         not_run[idx] = best
-    return Collection(configs, invs, items, runs, not_run, issues, pytest_evidence, collected_files)
+    return Collection(configs, invs, items, runs, not_run, issues, pytest_evidence, collected_files, resolved)
 
 
 def _pyarg_path(name, cwd, path_set):

@@ -125,6 +125,45 @@ def _raises_systemexit(withnode, imports) -> bool:
     return False
 
 
+TEST_LIFECYCLE = frozenset({"setUp", "tearDown", "setUpClass", "tearDownClass", "setup_method", "teardown_method", "setup_class", "teardown_class", "setup_function", "teardown_function", "setup_module", "teardown_module", "setup", "teardown"})
+
+
+def _catches_exit(h: ast.ExceptHandler) -> bool:
+    if h.type is None:
+        return True
+    names = [(dotted(t) or "") for t in (h.type.elts if isinstance(h.type, ast.Tuple) else [h.type])]
+    return any(n.removeprefix("builtins.") in ("SystemExit", "BaseException") for n in names)
+
+
+def _is_direct_function(fn) -> bool:
+    """Functions whose body the runner executes as part of a test: test
+    functions, fixtures, pytest hooks, and test-class lifecycle methods."""
+    if fn.name.startswith("test") or fn.name.startswith("pytest_") or fn.name in TEST_LIFECYCLE:
+        return True
+    return any((dotted(d.func if isinstance(d, ast.Call) else d) or "").split(".")[-1] == "fixture" for d in fn.decorator_list)
+
+
+def _where(node, where):
+    """Context for the children of `node`. 'direct': code the runner executes
+    for a test (module level, test functions, fixtures, hooks, lifecycle
+    methods of test classes). 'test-class': the body of a test class.
+    'nested': helpers, test doubles, inner functions and other classes."""
+    if isinstance(node, ast.Lambda):
+        return "nested"
+    if isinstance(node, ast.ClassDef):
+        bases = [(dotted(b) or "").split(".")[-1] for b in node.bases]
+        is_test_class = node.name.startswith("Test") or any(b.endswith("TestCase") for b in bases)
+        return "test-class" if (where == "direct" and is_test_class) else "nested"
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if where in ("direct", "test-class") and _is_direct_function(node):
+            # an inner def inside a test is not direct: its children see 'nested'
+            return "direct-fn"
+        return "nested"
+    if where == "direct-fn":
+        return "direct-fn"
+    return where
+
+
 def ec_exit_before_assert(pm: PyModel, ctx) -> CheckResult:
     """EC-EXIT-BEFORE-ASSERT: test code that terminates the process with a
     success status (sys.exit(0), os._exit(0), exit(), raise SystemExit(0),
@@ -137,14 +176,21 @@ def ec_exit_before_assert(pm: PyModel, ctx) -> CheckResult:
     r = _base("EC-EXIT-BEFORE-ASSERT", pm, pm.test_paths)
     sites = 0
 
-    def visit(pf, node, guarded):
+    def visit(pf, node, guarded, where):
         nonlocal sites
         if is_main_guard(node):
             for child in node.orelse:
-                visit(pf, child, guarded)
+                visit(pf, child, guarded, where)
             return
         if isinstance(node, (ast.With, ast.AsyncWith)) and _raises_systemexit(node, pf.imports):
             guarded = True
+        if isinstance(node, ast.Try) and any(_catches_exit(h) for h in node.handlers):
+            for child in node.body:
+                visit(pf, child, True, where)
+            for part in (node.handlers, node.orelse, node.finalbody):
+                for child in part:
+                    visit(pf, child, guarded, where)
+            return
         qn = None
         call = None
         if isinstance(node, ast.Call):
@@ -161,15 +207,17 @@ def ec_exit_before_assert(pm: PyModel, ctx) -> CheckResult:
         if qn is not None and not guarded:
             sites += 1
             status = _exit_code_status(call, qn)
-            if status == "zero":
+            if status == "zero" and where in ("direct", "direct-fn"):
                 r.findings.append(_loc(pf, node, f"{qn} with success status in test code: later assertions never run and the process reports success", call=qn))
+            elif status == "zero":
+                r.unknowns.append(_loc(pf, node, f"{qn} with success status inside a helper, test double or nested function; whether a test reaches it uncaught is not evaluated"))
             elif status == "unknown":
                 r.unknowns.append(_loc(pf, node, f"{qn} with a non-literal status in test code"))
         for child in ast.iter_child_nodes(node):
-            visit(pf, child, guarded)
+            visit(pf, child, guarded, _where(node, where))
 
     for pf in pm.tests():
-        visit(pf, pf.tree, False)
+        visit(pf, pf.tree, False, "direct")
     r.had_input = bool(pm.test_paths)
     if not r.had_input:
         r.absent_reason = NO_TESTS
@@ -201,6 +249,17 @@ def _classify_eq(fn, dunder: str) -> str:
     real_returns = [v for v in returns if v is not None and not (isinstance(v, ast.Name) and v.id == "NotImplemented")]
     if not real_returns:
         return "no-result"
+    def lit(v):
+        if isinstance(v, ast.Constant):
+            return ("c", bool(v.value))
+        if isinstance(v, ast.UnaryOp) and isinstance(v.op, ast.Not) and isinstance(v.operand, ast.Constant):
+            return ("c", not v.operand.value)
+        return None
+
+    lits = [lit(v) for v in real_returns]
+    # constant: every return is a literal with the same truth value. Different
+    # literals chosen by the object's own state (a call counter) is stateful.
+    literal = all(x is not None for x in lits) and len(set(lits)) == 1
     if len(params) >= 2:
         other = params[1]
     elif fn.args.vararg is not None:
@@ -213,7 +272,9 @@ def _classify_eq(fn, dunder: str) -> str:
         for n in ast.walk(stmt):
             if isinstance(n, ast.Name) and n.id == other and isinstance(n.ctx, ast.Load):
                 reads_other = True
-    return "depends" if reads_other else "constant"
+    if reads_other:
+        return "depends"
+    return "constant" if literal else "ignores-other"
 
 
 def ec_equality_override(pm: PyModel, ctx) -> CheckResult:
@@ -239,7 +300,9 @@ def ec_equality_override(pm: PyModel, ctx) -> CheckResult:
         kind = _classify_eq(fn, dunder)
         where = "test" if pf.is_test else "implementation"
         if kind == "constant":
-            r.findings.append(_loc(pf, node, f"{owner}.{dunder} in {where} code ignores the compared object: equality is constant", owner=owner, scope=where))
+            r.findings.append(_loc(pf, node, f"{owner}.{dunder} in {where} code ignores the compared object and returns a constant", owner=owner, scope=where))
+        elif kind == "ignores-other":
+            r.unknowns.append(_loc(pf, node, f"{owner}.{dunder} in {where} code ignores the compared object but computes its result (stateful or non-literal); effect not evaluated"))
         elif kind == "depends" and pf.is_test:
             r.unknowns.append(_loc(pf, node, f"{owner}.{dunder} defined in test code; comparison soundness not statically decidable"))
 
@@ -594,7 +657,9 @@ def _mock_only(func, cls, helpers) -> tuple[bool, int]:
     for n in ast.walk(func):
         if isinstance(n, ast.Assign):
             for t in n.targets:
-                for tn in ast.walk(t):
+                # plain names and tuple unpacking only: `mod.attr = x` does not
+                # make `mod` a local
+                for tn in ([t] if isinstance(t, ast.Name) else t.elts if isinstance(t, (ast.Tuple, ast.List)) else []):
                     if isinstance(tn, ast.Name):
                         local_targets.setdefault(tn.id, []).append(n.value)
         elif isinstance(n, (ast.For, ast.comprehension)):
@@ -780,8 +845,8 @@ def ec_special_cased(pm: PyModel, ctx) -> CheckResult:
     impl_counts: dict = {}
     for pf in pm.impls():
         for n in ast.walk(pf.tree):
-            if isinstance(n, ast.Constant):
-                k = _literal_value(n)
+            k = _literal_value(n)
+            if k is not None:
                 impl_counts[k] = impl_counts.get(k, 0) + 1
     other_text = b"\n".join(
         data for p, data in sorted(ctx.snap.files.items()) if not p.endswith(".py") and not in_test_dir(p)
@@ -881,6 +946,10 @@ def _has_call(n) -> bool:
 
 
 def _handler_swallows(h: ast.ExceptHandler) -> bool:
+    """A handler that catches assertion failures and does nothing with them:
+    it catches AssertionError / Exception / BaseException / everything, and
+    its body is only `pass`, `...`, `continue` or `break`. A handler that
+    records, inspects or re-raises the exception is not swallowing."""
     names = []
     if h.type is None:
         names = ["<bare>"]
@@ -891,12 +960,16 @@ def _handler_swallows(h: ast.ExceptHandler) -> bool:
     if not any(n in ("AssertionError", "Exception", "BaseException", "<bare>") for n in names):
         return False
     for stmt in h.body:
-        for x in ast.walk(stmt):
-            if isinstance(x, ast.Raise) or is_assertion(x):
-                return False
-            if isinstance(x, ast.Return):
-                return False
+        if isinstance(stmt, (ast.Pass, ast.Continue, ast.Break)):
+            continue
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
+            continue
+        return False
     return True
+
+
+def _else_fails(t: ast.Try) -> bool:
+    return any(isinstance(x, ast.Raise) or is_assertion(x) for st in t.orelse for x in ast.walk(st))
 
 
 def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
@@ -905,16 +978,19 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
     here): each pattern below is a construct that looks like an assertion
     and is not one.
       constant      `assert True`, `assert "msg"`, `assert (x, "msg")`
-      tautology     `assert x is x`, `assertIs(x, x)` (no calls in x). `x == x`
-                    is NOT reported: it invokes __eq__ and can fail (NaN,
-                    broken __eq__), and tests of reflexivity use it.
+      tautology     `assert x is x`, `assertIs(x, x)` where x is a plain name.
+                    `x.attr is x.attr` is NOT reported: each side reads a
+                    property or descriptor and the assertion tests caching.
+                    `x == x` is NOT reported: it invokes __eq__ and can fail.
       or-true       `assert <expr> or True`
       misused-msg   `assertTrue(a, b)` with a non-string constant b
       pseudo-mock   `assert m.called_once_with(...)` — auto-created Mock
                     attribute, always truthy; bare `m.assert_called` without ()
       swallowed     assertion inside try whose handler catches
                     AssertionError/Exception and does not re-raise or fail
-                    (`assert False` used to raise on purpose is excluded)
+                    (`assert False` used to raise on purpose, handlers that
+                    record the exception, and `try/except/else: raise`
+                    "was not raised" checks are excluded)
       unreachable   assertion after a bare call statement inside a
                     `pytest.raises` / `assertRaises` block (`assert False`
                     used as a should-have-raised guard is excluded)"""
@@ -929,7 +1005,7 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                     r.findings.append(_loc(pf, n, "assert on a truthy constant cannot fail", pattern="constant"))
                 elif isinstance(t, ast.Tuple) and t.elts:
                     r.findings.append(_loc(pf, n, "assert on a non-empty tuple cannot fail", pattern="constant"))
-                elif isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Is) and _dump(t.left) == _dump(t.comparators[0]) and not _has_call(t.left):
+                elif isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Is) and isinstance(t.left, ast.Name) and _dump(t.left) == _dump(t.comparators[0]):
                     r.findings.append(_loc(pf, n, "assert tests an expression's identity with itself", pattern="tautology"))
                 elif isinstance(t, ast.BoolOp) and isinstance(t.op, ast.Or) and any(isinstance(v, ast.Constant) and bool(v.value) for v in t.values):
                     r.findings.append(_loc(pf, n, "assert '... or <truthy constant>' cannot fail", pattern="or-true"))
@@ -937,7 +1013,7 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                     r.findings.append(_loc(pf, n, f"assert on .{t.func.attr}(): an auto-created Mock attribute, always truthy", pattern="pseudo-mock"))
             elif isinstance(n, ast.Call):
                 name = call_name(n)
-                if name == "assertIs" and len(n.args) >= 2 and _dump(n.args[0]) == _dump(n.args[1]) and not _has_call(n.args[0]):
+                if name == "assertIs" and len(n.args) >= 2 and isinstance(n.args[0], ast.Name) and _dump(n.args[0]) == _dump(n.args[1]):
                     r.findings.append(_loc(pf, n, f"{name} compares an expression with itself", pattern="tautology"))
                 if name in ("assertTrue", "assertFalse") and len(n.args) == 2 and isinstance(n.args[1], ast.Constant) and not isinstance(n.args[1].value, str):
                     r.findings.append(_loc(pf, n, f"{name}(a, b): b is the failure message, not a comparand", pattern="misused-msg"))
@@ -945,7 +1021,7 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                 r.findings.append(_loc(pf, n, f"`.{n.value.attr}` is referenced but never called", pattern="pseudo-mock"))
             elif isinstance(n, ast.Try):
                 real = any(is_assertion(x) and not (isinstance(x, ast.Assert) and _falsy_const(x.test)) for s in n.body for x in ast.walk(s))
-                if real and any(_handler_swallows(h) for h in n.handlers):
+                if real and not _else_fails(n) and any(_handler_swallows(h) for h in n.handlers):
                     r.findings.append(_loc(pf, n, "assertion inside try whose handler swallows the failure", pattern="swallowed"))
             elif isinstance(n, (ast.With, ast.AsyncWith)):
                 for item in n.items:
@@ -955,8 +1031,9 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                         if "AssertionError" in exc_names:
                             continue
                         seen_bare_call = False
-                        for stmt in n.body:
-                            if seen_bare_call and any(isinstance(x, ast.Assert) and not _falsy_const(x.test) for x in ast.walk(stmt)):
+                        for si, stmt in enumerate(n.body):
+                            later_raise = any(isinstance(x, ast.Raise) for st2 in n.body[si + 1:] for x in ast.walk(st2))
+                            if seen_bare_call and not later_raise and any(isinstance(x, ast.Assert) and not _falsy_const(x.test) for x in ast.walk(stmt)):
                                 r.findings.append(_loc(pf, stmt, "assertion after a bare call in a raises-block is unreachable when that call raises as expected", pattern="unreachable"))
                                 break
                             if isinstance(stmt, ast.Expr) and isinstance(stmt.value, (ast.Call, ast.Await)):
@@ -988,11 +1065,20 @@ def ec_tests_not_run(pm: PyModel, ctx) -> CheckResult:
     coll = ctx.collection
     r.unknowns.extend(coll.issues)
     groups: dict = {}
+    collapsed = []
     for idx, (kind, reason, inv) in sorted(coll.not_run.items()):
         it = coll.items[idx]
         if not coll.pytest_evidence and kind != "skipped":
             continue
+        if kind == "unresolved" and coll.resolved_invocations == 0:
+            collapsed.append(it)
+            continue
         groups.setdefault((it.file, kind, reason), []).append(it)
+    if collapsed:
+        files = sorted({i.file for i in collapsed})
+        r.unknowns.append(
+            Location(files[0], None, f"no pytest invocation could be resolved; {len(collapsed)} test(s) in {len(files)} file(s) not evaluated", {"kind": "unresolved", "count": len(collapsed), "files": len(files)})
+        )
     for (file, kind, reason), its in sorted(groups.items()):
         names = [f"{i.cls}.{i.name}" if i.cls else i.name for i in its]
         detail = {"kind": kind, "tests": names[:20], "count": len(its)}

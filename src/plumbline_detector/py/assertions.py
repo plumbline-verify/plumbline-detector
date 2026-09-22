@@ -38,7 +38,12 @@ def _is_assert_call(call: ast.Call, helpers: frozenset[str]) -> bool:
     if name in FAIL_CALLS:
         d = dotted(call.func) or ""
         return d in ("pytest.fail", "self.fail", "fail")
-    return name in helpers
+    if name not in helpers:
+        return False
+    # Helper credit by name only for bare calls and self./cls. calls: in
+    # `client.get(...)` the method belongs to the object, not to a helper.
+    f = call.func
+    return isinstance(f, ast.Name) or (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in ("self", "cls"))
 
 
 def is_assertion(node, helpers: frozenset[str] = frozenset()) -> bool:
@@ -53,16 +58,36 @@ def is_assertion(node, helpers: frozenset[str] = frozenset()) -> bool:
 
 
 def contains_assertion(func, helpers: frozenset[str] = frozenset()) -> bool:
+    if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for d in func.decorator_list:
+            target = d.func if isinstance(d, ast.Call) else d
+            # a decorator that asserts wraps the test in an asserting test
+            if (dotted(target) or "").split(".")[-1] in helpers:
+                return True
     return any(is_assertion(n, helpers) for n in ast.walk(func))
 
 
+SUPPORT_DIRS = frozenset({"testing", "test_utils", "testutils", "test_helpers", "testlib"})
+SUPPORT_FILES = frozenset({"assertions.py", "asserts.py", "testing.py"})
+
+
+def _is_support_module(path: str) -> bool:
+    parts = path.split("/")
+    return any(p in SUPPORT_DIRS for p in parts[:-1]) or parts[-1] in SUPPORT_FILES
+
+
 def asserting_helpers(pm: PyModel) -> frozenset[str]:
-    """Names of functions defined in test paths that contain an assertion,
-    closed under calls between such functions."""
+    """Names of functions that contain an assertion, closed under calls
+    between such functions. Sources: every function in test paths (including
+    test functions, which other tests call); functions in test-support
+    modules (a `testing/`, `test_utils/` ... package, or assertions.py);
+    and functions named test* anywhere (e.g. documentation examples that
+    tests import and call)."""
     defs: dict[str, list] = {}
-    for pf in pm.tests():
+    for pf in pm.files.values():
+        support = pf.is_test or _is_support_module(pf.path)
         for node in ast.walk(pf.tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("test"):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (support or node.name.startswith("test")):
                 defs.setdefault(node.name, []).append(node)
     helpers: set[str] = set()
     changed = True

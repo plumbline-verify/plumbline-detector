@@ -108,6 +108,7 @@ class Job:
     triggers: frozenset = frozenset()
     run_working_directory: str | None = None  # defaults.run.working-directory
     env: dict = field(default_factory=dict)
+    matrix: object = None  # raw strategy.matrix node (YMap / YStr) or None
 
     @property
     def display(self) -> str:
@@ -260,6 +261,7 @@ def _parse_job(wf_path, job_id, raw, issues) -> Job | None:
         raw_texts=_strings(raw, []),
         run_working_directory=_defaults_wd(raw),
         env=_env(raw.get("env")),
+        matrix=strategy.get("matrix") if isinstance(strategy, Y.YMap) else None,
     )
 
 
@@ -435,8 +437,26 @@ def _trivial_step(step: Step) -> bool:
     return all(TRIVIAL_RUN_RE.match(line) for line in step.run.splitlines())
 
 
+RELEASE_NAME_RE = re.compile(r"(deploy|release|publish|pypi)")
+_PR_FALSE_CONJUNCTS = [
+    re.compile(r"^github\.event_name == '(push|release|schedule|workflow_dispatch|workflow_call|repository_dispatch|workflow_run)'$"),
+    re.compile(r"^startswith\(github\.ref, 'refs/tags/?'\)$"),
+    re.compile(r"^github\.ref == 'refs/(heads|tags)/[^']*'$"),
+]
+
+
+def never_runs_on_pr(job: Job) -> bool:
+    """The job-level if: has a conjunct that is false on every PR run."""
+    if job.if_expr is None:
+        return False
+    cs = _conjuncts(job.if_expr)
+    return bool(cs) and any(any(p.match(c) for p in _PR_FALSE_CONJUNCTS) for c in cs)
+
+
 def is_aggregator(model: GHAModel, job: Job) -> bool:
     if not job.needs or job.uses:
+        return False
+    if RELEASE_NAME_RE.search(f"{job.id} {job.name or ''}".lower()) or never_runs_on_pr(job):
         return False
     if any(step_runs_tests(s) for s in job.steps):
         return False
