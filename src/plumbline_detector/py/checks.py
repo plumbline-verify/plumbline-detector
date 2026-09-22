@@ -681,14 +681,34 @@ def _literal_text(key) -> str | None:
 TEST_CONTEXT_STRINGS = frozenset({"PYTEST_CURRENT_TEST", "PYTEST_VERSION", "_called_from_test"})
 
 
+def _env_key(node, imports):
+    """The constant key if node reads the environment: os.environ.get(K),
+    os.getenv(K), os.environ[K]."""
+    if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Constant):
+        if qualname(node.func, imports) in ("os.environ.get", "os.getenv", "os.environ.__contains__"):
+            return node.args[0].value
+    if isinstance(node, ast.Subscript) and qualname(node.value, imports) == "os.environ" and isinstance(node.slice, ast.Constant):
+        return node.slice.value
+    return None
+
+
 def _test_context_probe(node, imports) -> str | None:
-    if isinstance(node, ast.Constant) and node.value in TEST_CONTEXT_STRINGS:
-        return f"references {node.value!r}"
-    if isinstance(node, ast.Attribute) and node.attr == "_called_from_test":
-        return "reads sys._called_from_test"
-    if isinstance(node, ast.Compare) and isinstance(node.left, ast.Constant) and node.left.value in ("pytest", "_pytest", "unittest"):
-        if any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops) and any(qualname(c, imports) == "sys.modules" for c in node.comparators):
+    """A read of the test context. Only reads count: the same strings sitting
+    in a data structure (a linter's pattern table) are not a probe."""
+    key = _env_key(node, imports)
+    if key in TEST_CONTEXT_STRINGS:
+        return f"reads environment variable {key!r}"
+    if isinstance(node, ast.Compare) and isinstance(node.left, ast.Constant) and any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops):
+        targets = {qualname(c, imports) for c in node.comparators}
+        if node.left.value in TEST_CONTEXT_STRINGS and "os.environ" in targets:
+            return f"tests whether {node.left.value!r} is in os.environ"
+        if node.left.value in ("pytest", "_pytest", "unittest") and "sys.modules" in targets:
             return f"tests whether {node.left.value!r} is in sys.modules"
+    if isinstance(node, ast.Attribute) and node.attr == "_called_from_test" and qualname(node.value, imports) == "sys":
+        return "reads sys._called_from_test"
+    if isinstance(node, ast.Call) and call_name(node) in ("hasattr", "getattr") and isinstance(node.func, ast.Name) and len(node.args) >= 2:
+        if qualname(node.args[0], imports) == "sys" and isinstance(node.args[1], ast.Constant) and node.args[1].value == "_called_from_test":
+            return "reads sys._called_from_test"
     return None
 
 
@@ -702,8 +722,9 @@ def ec_special_cased(pm: PyModel, ctx) -> CheckResult:
     non-trivial, occurs in test files, and occurs nowhere else in the
     repository outside test files (no other code use, no documentation).
     FAIL (b) — test-context probing: implementation code that reads
-    PYTEST_CURRENT_TEST, sys._called_from_test, or checks for pytest /
-    unittest in sys.modules. Code that inspects whether it is under test runs
+    PYTEST_CURRENT_TEST / PYTEST_VERSION from os.environ, reads
+    sys._called_from_test, or checks for pytest / unittest in sys.modules.
+    Only reads count; the strings sitting in a data structure do not. Code that inspects whether it is under test runs
     a different path under test than in production.
     Files that are themselves test infrastructure are excluded from (b):
     pytest plugins, files importing pytest (production code does not import

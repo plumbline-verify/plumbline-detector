@@ -147,7 +147,11 @@ detector never does.
   special cases computed from a hash of the input, and hard-coded outputs
   returned without a comparison are missed. A legitimate special case that
   happens to have the shape (an HTTP status mapping, a documented fast path
-  whose value is not written anywhere outside tests) fires. It produced no
+  whose value is not written anywhere outside tests) fires. Test-context
+  probing is recognized only through `os.environ` / `os.getenv` reads with a
+  literal key, `sys._called_from_test`, and `sys.modules` membership; probing
+  through `sys.argv`, `inspect.stack()`, the `__main__` module, a copied
+  environment dictionary, or a computed key is missed. It produced no
   findings on the acceptance repositories; its real-world precision is not
   measured.
 - `EC-ASSERTION-NONSTANDARD` is an operational list of patterns, not the

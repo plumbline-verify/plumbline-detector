@@ -14,7 +14,7 @@ Detector schema 1.0.0. Environment: CPython 3.13, PyYAML 6.0.3.
 | 6 | LIMITATIONS.md. | `LIMITATIONS.md`. |
 | 7 | README with install, usage, every check and the failure it prevents. | `README.md`. |
 
-Test suite: `python -m pytest` → 135 passed (including the two spelling-tool tests, which need hunspell). `tools/check_us_spelling.py` → OK.
+Test suite: `python -m pytest` → 137 passed (including the two spelling-tool tests, which need hunspell). `tools/check_us_spelling.py` → OK.
 
 ## Real-repository runs
 
@@ -157,6 +157,23 @@ full, that is said.
   precision unmeasured. In the first run, ruff's lint fixtures produced 29
   exit findings (fixture files that contain `sys.exit(0)` because a lint rule
   is about it); test-data classification removed them.
+
+### Self-run
+
+Running the detector on its own repository produced four EC-SPECIAL-CASED
+findings in `src/plumbline_detector/py/checks.py`: the detector's own table of
+probe strings (`"PYTEST_CURRENT_TEST"` and others) matched, because the check
+looked for the strings anywhere in implementation code. That is the linter
+false-positive class. The check now requires an actual read (environment
+lookup, `sys` attribute, `sys.modules` membership); fixture
+`special-discrim-table` (strings in a table, PASS) and `special-bad-probe2`
+(reads via `from os import environ` and `hasattr(sys, ...)`, FAIL) were
+added. Re-running the seven repositories after this change gave identical
+verdicts and counts. The remaining self-run findings are the deliberately
+defective fixture test files under `fixtures/`; the defective helper and
+implementation files there are classified as test data and are not analyzed,
+which is itself a live demonstration of the test-data blind spot described
+in LIMITATIONS.md.
 
 ### What this run does and does not show
 

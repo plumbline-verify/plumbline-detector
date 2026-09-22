@@ -73,6 +73,8 @@ CASES = [
     ("py/special-good", "EC-SPECIAL-CASED", "PASS", 0),
     ("py/special-bad", "EC-SPECIAL-CASED", "FAIL", 1),
     ("py/special-bad-probe", "EC-SPECIAL-CASED", "FAIL", 2),
+    ("py/special-bad-probe2", "EC-SPECIAL-CASED", "FAIL", 2),
+    ("py/special-discrim-table", "EC-SPECIAL-CASED", "PASS", 0),  # strings in a table are not a probe
     # EC-ASSERTION-NONSTANDARD
     ("py/nonstd-good", "EC-ASSERTION-NONSTANDARD", "PASS", 0),
     ("py/nonstd-bad", "EC-ASSERTION-NONSTANDARD", "FAIL", 9),
