@@ -173,6 +173,21 @@ special-casing test inputs, among others).
 | `EC-SPECIAL-CASED` | (a) In implementation code: `if <parameter> == <literal>: return <literal>` in a function that also has a general return path, where the input literal is non-trivial, occurs in test files, and occurs nowhere else outside test files (not in other code, not in docs). (b) Implementation code that reads `PYTEST_CURRENT_TEST` or `PYTEST_VERSION` from the environment (`os.environ.get`, `os.getenv`, `os.environ[...]`, `in os.environ`), reads `sys._called_from_test` (attribute, `hasattr`, `getattr`), or checks for `pytest`/`unittest` in `sys.modules`. The same strings merely present in code (a linter's pattern table) do not count. Test infrastructure (files importing pytest, pytest plugins, noxfile, setup.py) is excluded from (b). | Code that returns the expected answer for the test's input only, or behaves differently under test than in production. |
 | `EC-ASSERTION-NONSTANDARD` | Assertions that cannot fail or cannot run: `assert <truthy constant>`, `assert (x, "msg")`, `assert x is x`, `assert … or True`, `assertTrue(a, <non-string constant>)`, `assert m.called_once_with(…)` (auto-created Mock attribute), bare `m.assert_called_once` without a call, an assertion inside `try` whose handler swallows `AssertionError`/`Exception`, and an assertion after a bare call inside a `pytest.raises`/`assertRaises` block. `assert x == x` is **not** reported (it invokes `__eq__` and can fail). This is an operational definition; it does not reproduce the taxonomy of any cited study. | Assertions that look like verification but verify nothing. |
 
+## Measuring the detector
+
+`tools/seeded_eval.py` scores the detector against an external corpus of
+tamper variants and benign look-alikes (a directory per variant plus a
+`manifest.json` naming each variant's target check and kind). It reports, per
+check, how many tamper variants were detected, abstained on (UNKNOWN), or
+missed, and how many benign variants raised a false alarm, both in isolation
+and overlaid onto real host repositories. The corpus must come from someone
+who has not read this code; a corpus written by the detector's author
+measures only the author's imagination.
+
+```sh
+python tools/seeded_eval.py --corpus CORPUS_DIR --host path/to/host-repo --out results.json
+```
+
 ## Layout
 
 ```
