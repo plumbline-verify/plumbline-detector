@@ -1,0 +1,22 @@
+{
+  "arrow": "2224255c4acc594d734cef0bbc83360452a67983",
+  "build": "a88de22ec551169edf782ad8c482ca0f9eb9dc9d",
+  "dateutil": "48bd1af97e71baf8e96fce5b663d589caac8f147",
+  "faker": "975dd2a11d7f083cb028e2f07478ab401b5fde17",
+  "flake8": "31405090a83cade9350502e481dcd1f032cb50b9",
+  "isort": "f00e091982aa174f1700beab29c94512de9d64fd",
+  "itsdangerous": "672971d66a2ef9f85151e53283113f33d642dabd",
+  "jsonschema": "15f8613be518d9e5f563efa643213d1962d3c5b7",
+  "loguru": "48acf77ac2b3296acc67069511b99cc3ca3d0c41",
+  "pip-tools": "b5f1116430699d58c3b376e801abcf981b136cf7",
+  "pipx": "260d8a98776860ce543459021604584a36b127cc",
+  "pylint": "387e4852c7afe33cbf84777558f851fc23cc3537",
+  "sphinx": "b04a2101295ac3fb725b16111eda0284b6da4cca",
+  "structlog": "73393f34b40c15688b3fdd0982889b225f11b59b",
+  "tqdm": "9cf5a12b1f955468a17f0ba3c59092b23e4258ac",
+  "trio": "0480602b48eda20f10283e7ac04ed01848d7acff",
+  "typer": "a80f6e5ecd74f32b983cca336a2f3cba98d9853a",
+  "urllib3": "911bc94d227519483c82e516e2bf10860396afd5",
+  "uvicorn": "a56c7cce64aaa37e5864f882a5cbce8aa1dac47a",
+  "virtualenv": "e3de9da3930388bdfe3ff7c7e3e13a5ad1b72c23"
+}

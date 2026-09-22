@@ -171,3 +171,101 @@ all if 40 or fewer, else 40 at random with seed 20260922; labels TP /
 FP-detector / FP-scope against the README definitions; independent labeling
 agents that do not see the detector code or round-1 results; the author
 audits a seeded random 20% (seed 20260923). GT-NO-GATE is not labeled.
+
+## Results (round 2, detector `dfb2c43`, schema 1.2.0)
+
+Run over the twenty round-2 repositories at the commits in
+`precision/round2/repositories.json`; all records carry the pre-registered
+fingerprint `sha256:2db2c62c…`. Labeled findings are in
+`precision/round2/labeled_findings.jsonl`. All twenty repositories cloned; in
+sphinx, git could not re-encode two `.inc` test inputs on checkout (not
+Python, not analyzed).
+
+### Precision
+
+| Check | Findings (pool) | Labeled | TP | FP-detector | FP-scope | Precision | 95% CI |
+|---|---|---|---|---|---|---|---|
+| GT-CONTINUE-ON-ERROR | 5 | 5 | 5 | 0 | 0 | 100% | 57%–100% |
+| EC-EQUALITY-OVERRIDE | 6 | 6 | 5 | 0 | 1 | 83% | 44%–97% |
+| EC-NO-ASSERTION | 273 | 40 | 25 | 15 | 0 | 62% | 47%–76% |
+| EC-TESTS-NOT-RUN | 7 | 7 | 4 | 0 | 3 | 57% | 25%–84% |
+| EC-ASSERTION-NONSTANDARD | 19 | 19 | 7 | 0 | 12 | 37% | 19%–59% |
+| EC-EXIT-BEFORE-ASSERT | 5 | 5 | 0 | 1 | 4 | 0% | 0%–43% |
+| GT-AGGREGATOR-PERMISSIVE | 1 | 1 | 0 | 0 | 1 | 0% | 0%–79% |
+| All labeled (unweighted) | | 83 | 46 | 16 | 21 | 55% | 45%–66% |
+
+**Plainly: overall precision did not improve.** Round 1 was 57% (48–66%);
+round 2 is 55% (45–66%). The round-1 fixes removed their own causes (none of
+round 1's nine recurring causes reappears below), but new data brought new
+causes. The fixes did not generalize into higher precision.
+
+### Where the false positives came from
+
+| Cause | Check | FP | Kind |
+|---|---|---|---|
+| pylint's `tests/functional/` files: lint inputs that deliberately contain the patterns (constant asserts, `quit()`, an always-true `__eq__`, a skipped test) and are linted, never run | NONSTANDARD 12, EXIT 4, EQUALITY 1, TESTS-NOT-RUN 1 | 18 | scope |
+| Assertion helper reached through `functools.partial` (isort's `partial(isort_test, ...)`) | NO-ASSERTION | 5 | detector |
+| `pytest.RaisesGroup` / `pytest.RaisesExc` (pytest 8.4 APIs) not recognized | NO-ASSERTION | 3 | detector |
+| Sphinx `tests/roots/` autodoc input modules, excluded by `collect_ignore` or holding `@overload` stubs named `test` | TESTS-NOT-RUN | 2 | scope |
+| Assertions inside a code string executed in a web worker (urllib3 emscripten tests) | NO-ASSERTION | 2 | detector |
+| Assertion helper reached through a parametrized callable, a fixture-returned closure, or a helper in a `_tests/` directory (not recognized as a test directory) | NO-ASSERTION | 3 | detector |
+| A third-party validator that raises (`stdnum`), and warnings turned into errors | NO-ASSERTION | 2 | detector |
+| `os._exit(0)` ending a forked child process; the parent reports the result | EXIT | 1 | detector |
+| A coverage-upload job inferred to be the merge aggregator | AGGREGATOR | 1 | scope |
+
+One repository, pylint, supplied 18 of the 37 false positives. A linter's
+test inputs are made of exactly the patterns these checks look for. This
+concentration is itself a finding about the detector: test-data
+classification by directory name (`fixtures/`, `resources/` ...) misses the
+layouts real projects use (`tests/functional/`, `tests/roots/`), and a single
+such repository can swing a pooled estimate.
+
+**Post-hoc views (not pre-registered; for diagnosis only).** Excluding
+pylint, precision is 46/65 = 71%. Counting only detector errors (treating
+FP-scope as excluded), precision is 46/62 = 74% in round 2 against 64/105 =
+61% in round 1: the errors in reading code went down, the errors in knowing
+what is test code went up.
+
+### Label audit
+
+The author reviewed 17 labels (seeded random 20%, listed in
+`precision/round2/score.md`) and agreed with all 17. The audit found one
+inconsistency between labelers outside the audited set: a faker test that
+turns a warning into an error was labeled TP ("does not crash"), while a
+dateutil test doing the same with `warnings.simplefilter("error")` was
+labeled FP-detector. Both labels stand, as the protocol allows corrections
+only for factual errors; moving either would change the overall figure by
+about one point.
+
+### Notable true positives
+
+- typer `tests/test_tutorial/test_parameter_types/test_file/test_tutorial005.py`:
+  `assert "Config line written"` asserts a non-empty string, which is always
+  true.
+- tqdm `test_envwrap_types`: `assert 1, "1" == nofallback()` and
+  `assert 1.1, "1.1" == annotated()` assert the constants; the comparisons
+  are the messages.
+- pipx: an assertion after the raising call inside `pytest.raises`, which
+  the repository's own lint suppression calls dead code.
+- urllib3 runs six matrix legs (emscripten, Python 3.15) with
+  `continue-on-error`; tqdm does so on Windows; typer's nightly CPython job
+  and pipx's package test job are fully `continue-on-error`.
+
+Observation only: none of these was reported to the projects.
+
+### What round 2 says about the detector
+
+1. Precision on unseen Python projects is about 55%, and fixing the last
+   round's errors did not move it. Expect a long tail of project-specific
+   patterns.
+2. The dominant remaining problem is not reading code but knowing what is a
+   test: test inputs for lint tools, documentation tools and parsers. That
+   needs a better model of which files a test runner actually executes,
+   not more patterns.
+3. EC-NO-ASSERTION is stable at 62–65% and is limited by assertion helpers
+   the static view cannot follow (`partial`, closures, code strings,
+   third-party validators). Its findings should be read as "no assertion the
+   detector can see", which the README already says.
+4. The rarely-firing checks remain unmeasurable at this sample size: across
+   both rounds, EC-EXIT-BEFORE-ASSERT has produced 8 findings and none was a
+   true positive.
