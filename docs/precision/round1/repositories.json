@@ -1,0 +1,22 @@
+{
+  "aiohttp": "214dcae0e6988cf17f465be008ddbbb501c33fc4",
+  "attrs": "8f767776326faaed11e6c2974798787f6e19b343",
+  "black": "0b50123abb27a59a8aac517a89ac4fec739dae24",
+  "celery": "eb3dfa3844288ee35c94a08267cc5e075d42b278",
+  "cli": "5b604c37c6c67e18e7c3e9aee6c88a8c22b98345",
+  "click": "3cbaa76b6014be7427d1ab06b4af40f01e7c278e",
+  "django": "dd6f6b1531984823e3dc56740dfa93f3ceb09357",
+  "fastapi": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+  "jinja": "5ef70112a1ff19c05324ff889dd30405b1002044",
+  "marshmallow": "7f0792bd7a06f72e393ec866ac1e89e1502ccfe1",
+  "mypy": "3b28c290153651fc14aef3c1a607d1119faebb35",
+  "packaging": "10590c194edb33c82f84a127883d6097c56b7840",
+  "poetry": "94b6e35b9091991887aa54feeb3771a86d3bd692",
+  "pytest-mock": "9e7eb7b59cde362c1c8ace2d18ca00fe2d7a1cd1",
+  "rich": "9d8f9a372cc5916fd4781fec207ced7ddac2f08f",
+  "scrapy": "cd4f213660831caac9314ff65d646704bc900138",
+  "sqlalchemy": "6e870776cbf298b541877af9b6caf73bc86b379e",
+  "starlette": "57de5fa9c2a98089a78d32d560e9b23e62560d5f",
+  "tox": "8e1967e98f6480b0d99847c6a058463b7cce5416",
+  "werkzeug": "6048fa48753c7b61e35cc34537667809dee8fa35"
+}

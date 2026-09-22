@@ -55,6 +55,96 @@ such change is listed.
 **What is not measured.** Recall. Nothing here says how many real defects
 the detector misses.
 
-## Results
+## Results (round 1, detector `ebeaaf0`)
 
-(Filled in after the run.)
+Run on 2026-09-22 over the twenty repositories at the commits listed in
+`precision/round1/repositories.json`. Every labeled finding, with its label
+and the labeler's one-sentence reason, is in
+`precision/round1/labeled_findings.jsonl`.
+
+**Erratum in the protocol above.** The ruleset fingerprint quoted in the
+protocol (`sha256:5b77…`) is wrong: it is the value of an earlier,
+never-released pin of schema 1.1.0. Commit `ebeaaf0`, the one the protocol
+names, pins `sha256:3dc55876e94295047850de8c6df2aacdc8bea90303d712c25c60f6a30b75792b`,
+and every record in this study carries that fingerprint. The code under test
+is exactly `ebeaaf0` (the only later change before the run was this
+document). The protocol text is left as committed.
+
+### Precision
+
+| Check | Findings (pool) | Labeled | TP | FP-detector | FP-scope | Precision | 95% CI |
+|---|---|---|---|---|---|---|---|
+| EC-TESTS-NOT-RUN | 19 | 19 | 17 | 2 | 0 | 89% | 69%–97% |
+| EC-NO-ASSERTION | 568 | 40 | 26 | 12 | 2 | 65% | 50%–78% |
+| EC-ASSERTION-NONSTANDARD | 43 | 40 | 20 | 18 | 2 | 50% | 35%–65% |
+| GT-CONTINUE-ON-ERROR | 3 | 3 | 1 | 2 | 0 | 33% | 6%–79% |
+| EC-EXIT-BEFORE-ASSERT | 3 | 3 | 0 | 3 | 0 | 0% | 0%–56% |
+| EC-EQUALITY-OVERRIDE | 2 | 2 | 0 | 1 | 1 | 0% | 0%–66% |
+| EC-SPECIAL-CASED | 2 | 2 | 0 | 2 | 0 | 0% | 0%–66% |
+| EC-MOCK-ONLY | 1 | 1 | 0 | 1 | 0 | 0% | 0%–79% |
+| GT-AGGREGATOR-PERMISSIVE | 1 | 1 | 0 | 0 | 1 | 0% | 0%–79% |
+| GT-SKIP-SATISFIES | 1 | 1 | 0 | 0 | 1 | 0% | 0%–79% |
+| All labeled (unweighted) | | 112 | 64 | 41 | 7 | 57% | 48%–66% |
+
+GT-NO-GATE fired on all twenty (not labeled, per protocol). GT-NO-PROPAGATION
+and EC-RUNNER-PATCHED produced no findings.
+
+**Plainly:** on code it had not seen, EC-TESTS-NOT-RUN was right about nine
+times in ten; EC-NO-ASSERTION about two times in three; the
+nonstandard-assertion patterns half the time; and the five rarely-firing
+checks were wrong on every one of their eight findings. Those eight are too
+few to estimate a rate, but zero out of eight is not a result to explain
+away.
+
+### Where the false positives came from
+
+All 48 false positives fall into nine causes:
+
+| Cause | Check | FP |
+|---|---|---|
+| `x.attr is x.attr` treated as a tautology; it reads a property or descriptor twice and tests caching | EC-ASSERTION-NONSTANDARD | 14 |
+| Assertion helpers not recognized: asserting decorators (`@collect_cases`, `@test_mutation`), assertion helpers in a non-test package (SQLAlchemy's `eq_`, `is_`), tests calling other test functions | EC-NO-ASSERTION | 12 |
+| "Swallowed" assertions that are not: a handler that captures the exception for later checks, a `try/except/else: raise` "was not called" check, module-level capture of an exception class | EC-ASSERTION-NONSTANDARD | 5 |
+| `SystemExit` raised inside a test double (a mock method, a monkeypatched stub) and caught by the code under test, or caught locally | EC-EXIT-BEFORE-ASSERT | 3 |
+| Test data classified as tests (Django's test-runner sample apps, SQLAlchemy's mypy input files) | EC-NO-ASSERTION | 2 |
+| `continue-on-error` expression that no active matrix entry makes true | GT-CONTINUE-ON-ERROR | 2 |
+| Tests run by a tox environment declared in `[tool.tox]` in `pyproject.toml`, which is not read | EC-TESTS-NOT-RUN | 2 |
+| A sequence literal (`["*"]`) counted as appearing only in tests; it also appears in implementation code | EC-SPECIAL-CASED | 2 |
+| A release-gate job inferred to be the merge aggregator | GT-SKIP-SATISFIES, GT-AGGREGATOR-PERMISSIVE | 2 |
+| Single cases: a stateful `__eq__` reported as constant; a deliberately pathological `__eq__` used as ORM input; a mock-only report on a test that calls real code first; an assertion after a call that does not raise | several | 4 |
+
+### Label audit
+
+The author reviewed 23 labels (a seeded random 20%, listed in
+`precision/round1/score.md`) against the source and agreed with all 23. Two
+were checked beyond the labeler's reasoning: click's `stress` tox
+environment is declared in `pyproject.toml` `[tool.tox.env.stress]` and run
+by `.github/workflows/nightly.yaml`; SQLAlchemy's matrix does include
+`pypy-3.11`. No label was changed.
+
+Labelers flagged some items as ambiguous (for example `assert True` placed
+next to a real `assert False`, or a collected benchmark with no assertion);
+they were labeled by the rule "intent does not matter", which counts them as
+TP. A stricter reader would move up to seven TPs to FP-scope, which would
+lower the figures above, not raise them.
+
+### Notable true positives
+
+- aiohttp `tests/test_web_exceptions.py::test_empty_text_304` evaluates
+  `resp.text is None` without `assert`, so it checks nothing (and constructs
+  `HTTPNoContent`, not a 304 response).
+- SQLAlchemy `test/sql/test_metadata.py::test_auto_append_lowercase_table`:
+  the loop body's only statement is `assert True`.
+- SQLAlchemy runs its whole test step on PyPy 3.11 with `continue-on-error`,
+  so failures there do not fail the job.
+- Unconditionally skipped tests in scrapy (7), poetry (3), httpie (3), click,
+  aiohttp, celery and mypy.
+
+Observation only: none of these was reported to the projects.
+
+### What this changes
+
+The detector was fixed after this round (next commit). Those fixes were made
+while looking at these twenty repositories, so this set can no longer
+measure the fixed detector's precision. A second round on a new,
+pre-registered set of repositories is needed to measure it.
