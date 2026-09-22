@@ -111,13 +111,16 @@ detector never does.
   there and imported via `sys.path` manipulation would be missed. `conftest.py`,
   `test_*.py`, `*_test.py` and `tests.py` files are always analyzed, wherever
   they are.
-- `EC-EXIT-BEFORE-ASSERT` looks only at test paths. An exit in implementation
-  code that tests call is not detected. `os.kill`, `signal`, `atexit`
+- `EC-EXIT-BEFORE-ASSERT` looks only at test paths, and fails only exits the
+  runner executes directly for a test; an exit in a helper or test double is
+  UNKNOWN, because whether something catches it is not traced. An exit in
+  implementation code that tests call is not detected. `os.kill`, `signal`, `atexit`
   handlers that call `os._exit(0)`, and threads that exit the process are not
   detected.
-- `EC-EQUALITY-OVERRIDE` detects an `__eq__` that never reads the other
-  operand. An `__eq__` that reads it and returns `True` anyway (`other; return
-  True`, `return other is other or True`) passes. `__hash__`, `__bool__`,
+- `EC-EQUALITY-OVERRIDE` fails only an `__eq__` that never reads the other
+  operand and always returns the same literal. An `__eq__` that reads it and
+  returns `True` anyway (`other; return True`, `return other is other or
+  True`) passes; one that ignores it but computes its result is UNKNOWN. `__hash__`, `__bool__`,
   `__lt__`, `__contains__`, `__instancecheck__` and `__getattr__` tricks are not
   checked. Legitimate always-equal sentinels in tests (e.g. an `ANY` matcher
   modeled on `unittest.mock.ANY`) **are** reported; the finding is literally
@@ -165,8 +168,9 @@ detector never does.
 ## The collection model (`EC-TESTS-NOT-RUN`)
 
 - **It sees only invocations written down in the repository.** CI systems
-  other than GitHub Actions, tox configuration in `tox.toml` or
-  `[tool.tox]` in `pyproject.toml`, hatch/pdm/poetry scripts, `justfile`s,
+  other than GitHub Actions, custom runner scripts in Python (Django's
+  `runtests.py`, which also decides which directories are skipped),
+  hatch/pdm/poetry scripts, `justfile`s,
   Docker entrypoints, and anything a developer runs by hand are invisible.
   When none is found it assumes a plain `pytest` at each configuration root,
   which may not be what anyone runs.
