@@ -690,6 +690,7 @@ class Collection:
     pytest_evidence: bool
     collected_files: set
     resolved_invocations: int = 0
+    data_items: int = 0  # test-looking functions in files reclassified as test data
 
 
 def _conftest_ignores(pm: PyModel, issues):

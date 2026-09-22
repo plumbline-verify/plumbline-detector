@@ -87,6 +87,7 @@ Top-level fields:
 | `repo` | `content_id`: SHA-256 over sorted (path, file SHA-256) pairs, so the same content always has the same identifier wherever it is unpacked. `label_sha256` if a label was given. |
 | `inventory` | Per-language file counts and non-blank LOC, primary language, Python test-file count, workflow count, unread files with reasons, excluded directory and symlink counts, Python test-data files. |
 | `summary` | Count of PASS / FAIL / UNKNOWN. |
+| `checks[].measured_precision` | The check's most recent held-out precision measurement (docs/PRECISION_STUDY.md): round, schema it was measured on, whether that is the exact check code now running (`same_ruleset`), sample size, true positives, precision and 95% Wilson interval; `null` if the check has never produced a finding in a study round. The source file's hash is in `provenance.measurements_sha256`. |
 | `checks` | One entry per check: `id`, `verdict`, `reason`, `findings`, `unknowns`, `stats`, and for gate checks `basis`. |
 
 **Determinism.** Two runs over identical input, options, and environment
@@ -117,7 +118,7 @@ code as confidential.
   ruleset exports), plus operator input.
 - **Python**: every `.py` file, parsed with the running interpreter's `ast`.
   *Test paths* are `test_*.py`, `*_test.py`, `conftest.py`, `tests.py`, and any
-  `.py` under a directory named `tests` or `test`. *Test data* are `.py` files
+  `.py` under a directory named `tests`, `test` or `_tests`. *Test data* are `.py` files
   under `fixtures/`, `resources/`, `testdata/`, `test_data/`,
   `example_scripts/` or `snapshots/` whose directory is not a package and
   whose name is not collectable by pytest; they are counted, not analyzed.
@@ -153,14 +154,34 @@ detector models pytest collection and selection statically:
   `--ignore-glob`, positional paths and node IDs, `--pyargs`, and
   `collect_ignore`/`collect_ignore_glob` in `conftest.py` are applied.
 
+**Test code and test data.** With a resolved invocation, a file under a test
+directory is test code only if pytest collects it, it is a `conftest.py`
+pytest would load, or test code imports it (directly, transitively, or via
+`pytest_plugins`). Anything else there whose name does not look like a test
+module (a linter's functional inputs, documentation roots, example projects)
+is test data: counted in `inventory.python_test_data_files`, not analyzed. A
+file that does look like a test module stays test code even when nothing
+collects it, so a test hidden by `collect_ignore` is still reported.
+
 A test counts as run if **any** invocation collects and selects it and it is
 not unconditionally skipped, so the model errs toward "runs". Tests the model
 says never run are reported by `EC-TESTS-NOT-RUN` and excluded from
 `EC-NO-ASSERTION` and `EC-MOCK-ONLY`; files that the configuration collects
 are treated as test code whatever their name.
 
-JavaScript/TypeScript, Java and C# are inventoried (files, LOC) but not
-analyzed in this version.
+- **JavaScript / TypeScript**: parsed with tree-sitter (TypeScript grammar for
+  `.ts/.mts/.cts`, TSX for `.tsx`, JavaScript with JSX for `.js/.jsx/.mjs/.cjs`).
+  A test file follows a test naming convention (`*.test.*`, `*.spec.*`,
+  `*.cy.*`, `__tests__/`, `test/`, `tests/`) and declares at least one test
+  case (`it`, `test`, `specify`, with `.skip/.only/.todo/.each` and
+  `xit/fit/xdescribe/fdescribe`). A test call must have a title, and a local
+  function that happens to be named `test` or `it` is not a test primitive.
+  Frameworks are read from `package.json` (jest, vitest, mocha, chai, ava,
+  jasmine, playwright, cypress). Files named like test utilities
+  (`test-utils`, `testing`, `setupTests` …) are read only as sources of
+  asserting helpers.
+
+Java and C# are inventoried (files, LOC) but not analyzed in this version.
 
 ## The checks
 
@@ -202,7 +223,7 @@ special-casing test inputs, among others).
 | `EC-EQUALITY-OVERRIDE` | Anywhere: an `__eq__`/`__ne__` (method, lambda, class attribute, attribute assignment, `setattr`) that never reads the other operand and whose every return is the same literal, such as `return True`. One that ignores the other operand but computes its result (state, a call) is UNKNOWN. In test code, any other `__eq__` is UNKNOWN (a comparison helper whose soundness cannot be judged). A value-object `__eq__` in implementation code that reads the other operand is **not** reported. | An object that equals everything, so every `assert result == expected` passes. |
 | `EC-RUNNER-PATCHED` | In test code: patching reporting machinery (`TestReport`, `CallInfo`, `call_and_report`, unittest `TestResult`, `AssertionError` …) by assignment, `setattr`, `monkeypatch`, or `mock.patch`; writing outcome attributes (`outcome`, `longrepr`, `excinfo`, `exitstatus`, `wasxfail` …) inside reporting hooks; `force_result` in reporting hooks; `pytest_pyfunc_call`/`pytest_runtest_call` returning without calling the test; `TestResult` subclasses that drop failures; `wasSuccessful()` returning a constant. Other attribute writes inside reporting hooks, and any `pytest_report_teststatus` implementation, are UNKNOWN. The same constructs in pytest plugins outside test paths are UNKNOWN. Not reported: the documented `setattr(item, "rep_" + rep.when, rep)` pattern. | A test suite that reports failures as passes. |
 | `EC-TESTS-NOT-RUN` | A test that no invocation found ever runs. FAIL: unconditionally skipped (`@pytest.mark.skip`, `skipif(True)`, `xfail(run=False)`, `unittest.skip`, module-level skip, a skip as the test's first statement), or deselected (`-k`, `-m`, `--deselect`) or ignored (`--ignore`, `--ignore-glob`, `collect_ignore`) in every invocation. UNKNOWN: outside collection scope (`norecursedirs`, `testpaths`, `python_files`, command-line paths), which is often test data; `-k` on parametrized tests; unresolvable invocations; collection hooks; conditional `collect_ignore`. See "Which tests actually run" below. | A test suite that looks large and green while part of it never executes. |
-| `EC-NO-ASSERTION` | A test function that runs (pytest or unittest; not `conftest.py`, not fixtures, not `skip`ped, not excluded by the collection model) with no recognized assertion. Recognized: `assert`; calls whose name starts with `assert`; `pytest.raises`/`warns`/`deprecated_call`, `assertRaises…`/`assertWarns…`/`assertLogs`; `pytest.fail`/`self.fail`; `raise AssertionError`; pytester `fnmatch_lines`-family and pexpect `expect`; a decorator that asserts; and calls (bare or via `self.`/`cls.`) to functions that themselves (transitively) assert, defined in test paths, in test-support modules (`testing/`, `test_utils/`, `assertions.py` …), or named `test*` anywhere. | A test that passes whenever the code does not crash, so it cannot detect a wrong answer. |
+| `EC-NO-ASSERTION` | A test function that runs (pytest or unittest; not `conftest.py`, not fixtures, not `skip`ped, not excluded by the collection model) with no recognized assertion. Recognized: `assert`; calls whose name starts with `assert`; `pytest.raises`/`warns`/`deprecated_call`/`RaisesGroup`/`RaisesExc`, `assertRaises…`/`assertWarns…`/`assertLogs`; `pytest.fail`/`self.fail`; `raise AssertionError`; pytester `fnmatch_lines`-family and pexpect `expect`; a decorator that asserts; a fixture whose body (or returned closure) asserts, called by the test; and calls (bare or via `self.`/`cls.`) to functions, `functools.partial` aliases, or callable classes (`__call__`) that themselves (transitively) assert, defined in test paths, in test-support modules (`testing/`, `test_utils/`, `assertions.py` …), or named `test*` anywhere. A test whose only assertions sit inside a code string it executes elsewhere is UNKNOWN. | A test that passes whenever the code does not crash, so it cannot detect a wrong answer. |
 | `EC-MOCK-ONLY` | A test that creates or injects mocks, asserts, and loads no name other than those mocks, values derived only from them, builtins and mock/pytest library names. Not reported: tests that call real code with a mock and then assert on the mock. | A green test that never reaches the code under test (`m.return_value = 3; assert m() == 3`). |
 | `EC-SPECIAL-CASED` | (a) In implementation code: `if <parameter> == <literal>: return <literal>` in a function that also has a general return path, where the input literal is non-trivial, occurs in test files, and occurs nowhere else outside test files (not in other code, not in docs). (b) Implementation code that reads `PYTEST_CURRENT_TEST` or `PYTEST_VERSION` from the environment (`os.environ.get`, `os.getenv`, `os.environ[...]`, `in os.environ`), reads `sys._called_from_test` (attribute, `hasattr`, `getattr`), or checks for `pytest`/`unittest` in `sys.modules`. The same strings merely present in code (a linter's pattern table) do not count. Test infrastructure (files importing pytest, pytest plugins, noxfile, setup.py) is excluded from (b). | Code that returns the expected answer for the test's input only, or behaves differently under test than in production. |
 | `EC-ASSERTION-NONSTANDARD` | Assertions that cannot fail or cannot run: `assert <truthy constant>`, `assert (x, "msg")`, `assert x is x` with `x` a plain name, `assert … or True`, `assertTrue(a, <non-string constant>)`, `assert m.called_once_with(…)` (auto-created Mock attribute), bare `m.assert_called_once` without a call, an assertion inside `try` whose handler catches `AssertionError`/`Exception` and does nothing (only `pass`/`continue`/`break`) with no failing `else:`, and an assertion after a bare call inside a `pytest.raises`/`assertRaises` block with no explicit `raise` after it. Not reported: `x == x` and `x.attr is x.attr` (both can fail: `__eq__`, property caching). This is an operational definition; it does not reproduce the taxonomy of any cited study. | Assertions that look like verification but verify nothing. |
@@ -221,6 +242,18 @@ measures only the author's imagination.
 ```sh
 python tools/seeded_eval.py --corpus CORPUS_DIR --host path/to/host-repo --out results.json
 ```
+
+### Evidence channel (JavaScript / TypeScript)
+
+These carry a `-JS` suffix; their precision is measured separately.
+
+| ID | Detects | Failure it prevents |
+|---|---|---|
+| `EC-EXIT-BEFORE-ASSERT-JS` | `process.exit()` / `process.exit(0)` in a test file. A non-literal status is UNKNOWN. | The runner ends with success before the remaining assertions run. |
+| `EC-RUNNER-PATCHED-JS` | `expect.extend` matchers whose every returned `pass` is literal `true`; assignments to `expect`, `it`, `test`, `describe`, `assert` or their `global`/`globalThis` properties. | Failures reported as passes. |
+| `EC-TESTS-NOT-RUN-JS` | `.skip`, `xit`, `xdescribe` (and tests inside them), `.todo`, tests with a title and no body, and a committed `.only`/`fit`/`fdescribe` that excludes the other tests in the file under jest or mocha. Not reported for vitest-only projects (vitest fails CI runs on `.only`). `.only` with no identifiable framework is UNKNOWN. Conditional skips (`skipIf`, `runIf`, ternaries) are not evaluated. | Tests that count as evidence and never execute. |
+| `EC-NO-ASSERTION-JS` | A test case with no assertion the detector can see. Recognized: `expect`/`assert`/`should` chains; node:test and ava `t.*` assertions; `sinon.assert`; supertest-style `.expect(...)`; testing-library `getBy*`/`findBy*` queries and cypress `cy.contains`/`.should` (they throw); a `throw`; calls to asserting helpers (functions, `.bind` aliases, and asserting functions passed as arguments) defined in test files or test-utility files. A test whose body is a function reference defined elsewhere is UNKNOWN. | A test that passes whenever the code does not throw. |
+| `EC-ASSERTION-NONSTANDARD-JS` | `expect(x);` with no matcher; a jest/vitest matcher referenced but not called (`expect(x).toBeTruthy;`; chai's property assertions are real and not reported); `expect(<literal>)` against a literal that makes a pure matcher always pass (`expect(true).toBe(true)`; literals that differ always fail and are not reported); `assert(<truthy literal>)` when `assert` is not a local function; `.resolves`/`.rejects` assertions neither awaited nor returned. | Assertions that look like verification but verify nothing, or may not run. |
 
 ## Layout
 

@@ -1,22 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "plumbline-detector/record/1.2.0",
+  "$id": "plumbline-detector/record/1.3.0",
   "title": "Plumbline detector record",
   "description": "One record per repository snapshot. schema_version changes whenever the record format or the semantics of any check change; provenance.ruleset_fingerprint identifies the exact check code.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "tool", "provenance", "repo", "inventory", "summary", "checks"],
   "properties": {
-    "schema_version": {"const": "1.2.0"},
+    "schema_version": {"const": "1.3.0"},
     "tool": {
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
       "properties": {"name": {"const": "plumbline-detector"}, "version": {"type": "string"}}
     },
     "provenance": {
       "type": "object", "additionalProperties": false,
-      "required": ["ruleset_fingerprint", "operator_set", "config", "config_hash", "environment", "commit_sha", "commit_sha_source", "timestamp", "timestamp_source"],
+      "required": ["ruleset_fingerprint", "measurements_sha256", "operator_set", "config", "config_hash", "environment", "commit_sha", "commit_sha_source", "timestamp", "timestamp_source"],
       "properties": {
         "ruleset_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "SHA-256 over the source of every module that defines check semantics."},
+        "measurements_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "SHA-256 of the measurements file the per-check measured_precision values come from."},
         "operator_set": {"type": "array", "items": {"type": "string"}, "description": "Check IDs run, in record order."},
         "config": {"type": "object", "description": "Effective configuration: operator-supplied required checks, gate files (by hash), exclusions, limits."},
         "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
@@ -36,7 +37,7 @@
     },
     "inventory": {
       "type": "object",
-      "required": ["languages", "primary_language", "loc_nonblank_total", "test_file_count", "file_count", "unread_files", "excluded_dir_count", "symlinks_not_followed", "github_workflow_files", "python_test_data_files"],
+      "required": ["languages", "primary_language", "loc_nonblank_total", "test_file_count", "file_count", "unread_files", "excluded_dir_count", "symlinks_not_followed", "github_workflow_files", "python_test_data_files", "js_test_files", "js_frameworks"],
       "properties": {
         "languages": {"type": "object"},
         "primary_language": {"type": ["string", "null"]},
@@ -47,6 +48,8 @@
         "excluded_dir_count": {"type": "integer"},
         "symlinks_not_followed": {"type": "integer"},
         "github_workflow_files": {"type": "integer"},
+        "js_test_files": {"type": "integer", "description": "JS/TS files following a test naming convention that declare at least one test case."},
+        "js_frameworks": {"type": "array", "items": {"type": "string"}, "description": "Test frameworks declared in package.json files."},
         "python_test_data_files": {"type": "integer", "description": "Python files classified as test inputs (fixture/resource data), counted but not analyzed."}
       }
     },
@@ -58,7 +61,7 @@
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "verdict", "reason", "findings", "unknowns", "stats"],
+        "required": ["id", "verdict", "reason", "findings", "unknowns", "stats", "measured_precision"],
         "properties": {
           "id": {"type": "string"},
           "verdict": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
@@ -66,7 +69,22 @@
           "basis": {"enum": ["declared", "inferred", "none"], "description": "GT checks only: where the required-check set came from."},
           "findings": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/location"}, {"required": ["id"]}]}},
           "unknowns": {"type": "array", "items": {"$ref": "#/$defs/location"}},
-          "stats": {"type": "object"}
+          "stats": {"type": "object"},
+          "measured_precision": {
+            "description": "Most recent held-out precision measurement of this check (docs/PRECISION_STUDY.md), or null if it has never produced a finding in a study round. same_ruleset is false when the measurement was made on different check code than the code that produced this record.",
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["round", "schema", "same_ruleset", "repositories", "labeled", "true_positives", "precision", "ci95"],
+                "properties": {
+                  "round": {"type": "integer"}, "schema": {"type": "string"}, "same_ruleset": {"type": "boolean"},
+                  "repositories": {"type": "integer"}, "labeled": {"type": "integer"}, "true_positives": {"type": "integer"},
+                  "precision": {"type": "number"}, "ci95": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+                }
+              }
+            ]
+          }
         }
       }
     }

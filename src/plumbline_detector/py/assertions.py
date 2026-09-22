@@ -8,7 +8,21 @@ import ast
 
 from .common import PyModel, call_name, dotted
 
-RAISES_CONTEXTS = frozenset({"raises", "warns", "deprecated_call", "assertRaises", "assertRaisesRegex", "assertWarns", "assertWarnsRegex", "assertLogs", "assertNoLogs"})
+RAISES_CONTEXTS = frozenset(
+    {
+        "raises",
+        "warns",
+        "deprecated_call",
+        "RaisesGroup",
+        "RaisesExc",
+        "assertRaises",
+        "assertRaisesRegex",
+        "assertWarns",
+        "assertWarnsRegex",
+        "assertLogs",
+        "assertNoLogs",
+    }
+)
 FAIL_CALLS = frozenset({"fail"})
 # Library methods that raise on mismatch without an assert* name.
 # pytest's LineMatcher (pytester/testdir result.stdout / stderr); pexpect's
@@ -89,15 +103,37 @@ def asserting_helpers(pm: PyModel) -> frozenset[str]:
         for node in ast.walk(pf.tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (support or node.name.startswith("test")):
                 defs.setdefault(node.name, []).append(node)
+    # Classes whose __call__ asserts: calling an instance is an assertion.
+    call_classes: dict[str, list] = {}
+    # NAME = partial(F, ...): NAME asserts if F does.
+    partials: dict[str, set] = {}
+    for pf in pm.files.values():
+        support = pf.is_test or _is_support_module(pf.path)
+        for node in ast.walk(pf.tree):
+            if support and isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__call__":
+                        call_classes.setdefault(node.name, []).append(item)
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and node.value.args:
+                if (dotted(node.value.func) or "").split(".")[-1] in ("partial", "partialmethod"):
+                    target = dotted(node.value.args[0])
+                    if target:
+                        for t in node.targets:
+                            if isinstance(t, ast.Name):
+                                partials.setdefault(t.id, set()).add(target.split(".")[-1])
     helpers: set[str] = set()
     changed = True
     while changed:
         changed = False
         frozen = frozenset(helpers)
-        for name, nodes in defs.items():
+        for name, nodes in list(defs.items()) + list(call_classes.items()):
             if name in helpers:
                 continue
             if any(contains_assertion(n, frozen) for n in nodes):
+                helpers.add(name)
+                changed = True
+        for name, targets in partials.items():
+            if name not in helpers and targets & helpers:
                 helpers.add(name)
                 changed = True
     return frozenset(helpers)

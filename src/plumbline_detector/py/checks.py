@@ -60,6 +60,35 @@ def _not_run_keys(ctx) -> set:
     }
 
 
+def asserting_fixtures(pm: PyModel, helpers) -> frozenset:
+    """Names of pytest fixtures whose body (including closures they return)
+    asserts: a test that uses the fixture as a callable asserts through it."""
+    out = set()
+    for pf in pm.tests():
+        for node in ast.walk(pf.tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                (dotted(d.func if isinstance(d, ast.Call) else d) or "").split(".")[-1] == "fixture" for d in node.decorator_list
+            ):
+                if contains_assertion(node, helpers):
+                    out.add(node.name)
+    return frozenset(out)
+
+
+def _uses_asserting_fixture(func, fixtures) -> bool:
+    params = set(_params(func)) | {a.arg for a in func.args.kwonlyargs}
+    used = params & fixtures
+    if not used:
+        return False
+    return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in used for n in ast.walk(func))
+
+
+_CODE_ASSERT_RE = re.compile(r"(^|\n)\s*(assert\b|with\s+pytest\.raises\b)")
+
+
+def _asserts_in_code_string(func) -> bool:
+    return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and _CODE_ASSERT_RE.search(n.value) for n in ast.walk(func))
+
+
 def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     """EC-NO-ASSERTION: a test function that contains no assertion of any
     kind. It passes whenever it does not raise, so it cannot detect a wrong
@@ -67,6 +96,7 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     assertions.py and include calls to repo-local asserting helpers."""
     r = _base("EC-NO-ASSERTION", pm, pm.test_paths)
     helpers = asserting_helpers(pm)
+    fixtures = asserting_fixtures(pm, helpers)
     not_run = _not_run_keys(ctx)
     total = skipped = 0
     for pf in pm.tests():
@@ -75,9 +105,13 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
                 skipped += 1
                 continue
             total += 1
-            if not contains_assertion(func, helpers):
-                name = f"{cls.name}.{func.name}" if cls else func.name
-                r.findings.append(_loc(pf, func, f"test {name} contains no assertion", test=name))
+            if contains_assertion(func, helpers) or _uses_asserting_fixture(func, fixtures):
+                continue
+            name = f"{cls.name}.{func.name}" if cls else func.name
+            if _asserts_in_code_string(func):
+                r.unknowns.append(_loc(pf, func, f"test {name}: assertions appear only inside a code string executed elsewhere; not evaluated"))
+            else:
+                r.findings.append(_loc(pf, func, f"test {name} contains no assertion the detector can see", test=name))
     r.had_input = total > 0 or bool(r.unknowns)
     if not r.had_input:
         r.absent_reason = NO_TESTS if not pm.test_paths else "no test functions found in test files"
@@ -207,15 +241,23 @@ def ec_exit_before_assert(pm: PyModel, ctx) -> CheckResult:
         if qn is not None and not guarded:
             sites += 1
             status = _exit_code_status(call, qn)
+            if status == "zero" and qn == "os._exit" and pf.path in forking:
+                status = "forked"
             if status == "zero" and where in ("direct", "direct-fn"):
                 r.findings.append(_loc(pf, node, f"{qn} with success status in test code: later assertions never run and the process reports success", call=qn))
             elif status == "zero":
                 r.unknowns.append(_loc(pf, node, f"{qn} with success status inside a helper, test double or nested function; whether a test reaches it uncaught is not evaluated"))
             elif status == "unknown":
                 r.unknowns.append(_loc(pf, node, f"{qn} with a non-literal status in test code"))
+            elif status == "forked":
+                r.unknowns.append(_loc(pf, node, "os._exit in a module that forks: likely the child process ending, whose status the parent checks; not evaluated"))
         for child in ast.iter_child_nodes(node):
             visit(pf, child, guarded, _where(node, where))
 
+    forking = {
+        pf.path for pf in pm.tests()
+        if any(isinstance(n, ast.Call) and qualname(n.func, pf.imports) in ("os.fork", "os.forkpty") for n in ast.walk(pf.tree))
+    }
     for pf in pm.tests():
         visit(pf, pf.tree, False, "direct")
     r.had_input = bool(pm.test_paths)
@@ -447,7 +489,11 @@ def ec_runner_patched(pm: PyModel, ctx) -> CheckResult:
     Not reported: the documented pattern that stores the report on the item
     (`setattr(item, "rep_" + rep.when, rep)`) and writes to report.sections /
     user_properties / extra."""
-    domain = [pf for pf in pm.files.values() if pf.is_test or pf.path.endswith("conftest.py") or _defines_pytest_hooks(pf)]
+    data = set(pm.data_paths)
+    domain = [
+        pf for pf in pm.files.values()
+        if pf.path not in data and (pf.is_test or pf.path.endswith("conftest.py") or _defines_pytest_hooks(pf))
+    ]
     r = _base("EC-RUNNER-PATCHED", pm, pm.test_paths)
     hooks_seen = 0
     for pf in sorted(domain, key=lambda f: f.path):
@@ -1099,6 +1145,7 @@ def ec_tests_not_run(pm: PyModel, ctx) -> CheckResult:
         "tests_run": runs,
         "tests_not_run": len(coll.not_run),
         "invocations_found": sum(1 for i in coll.invocations if not i.default),
+        "test_functions_in_test_data": coll.data_items,
         "pytest_configs": sorted(c.file for c in coll.configs.values() if c.file and not c.fallback_only),
     }
     return r

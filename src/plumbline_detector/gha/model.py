@@ -437,7 +437,8 @@ def _trivial_step(step: Step) -> bool:
     return all(TRIVIAL_RUN_RE.match(line) for line in step.run.splitlines())
 
 
-RELEASE_NAME_RE = re.compile(r"(deploy|release|publish|pypi)")
+# Jobs that summarize for humans or ship artifacts; never inferred as the gate.
+RELEASE_NAME_RE = re.compile(r"(deploy|release|publish|pypi|coverage|codecov|upload|notify|comment)")
 _PR_FALSE_CONJUNCTS = [
     re.compile(r"^github\.event_name == '(push|release|schedule|workflow_dispatch|workflow_call|repository_dispatch|workflow_run)'$"),
     re.compile(r"^startswith\(github\.ref, 'refs/tags/?'\)$"),

@@ -72,3 +72,22 @@ def test_cli_formats():
     for fmt in ("sarif", "markdown"):
         p = subprocess.run([sys.executable, "-m", "plumbline_detector.cli", os.path.join(FIX, "py/eq-good"), "--format", fmt], capture_output=True, check=True)
         assert p.stdout
+
+
+def test_measured_precision_attached_and_honest():
+    from plumbline_detector.record import load_measurements, ruleset_fingerprint
+
+    rec = analyze(os.path.join(FIX, "py/nonstd-bad"))
+    m = {c["id"]: c["measured_precision"] for c in rec["checks"]}
+    assert m["EC-NO-ASSERTION"]["labeled"] > 0 and 0 <= m["EC-NO-ASSERTION"]["precision"] <= 1
+    lo, hi = m["EC-NO-ASSERTION"]["ci95"]
+    assert lo <= m["EC-NO-ASSERTION"]["precision"] <= hi
+    assert m["GT-NO-GATE"] is None  # never labeled, by protocol
+    measurements, digest = load_measurements()
+    measured_fps = {r["ruleset_fingerprint"] for r in measurements["rounds"]}
+    for v in m.values():
+        if v:
+            assert v["same_ruleset"] == (ruleset_fingerprint() in measured_fps)
+    assert rec["provenance"]["measurements_sha256"] == digest
+    md = to_markdown(rec)
+    assert "Measured precision" in md and "not measured" in md

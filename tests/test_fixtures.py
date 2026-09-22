@@ -39,6 +39,7 @@ CASES = [
     ("gha/agg-bad-partial", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-absent", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),
     ("gha/agg-discrim-release", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),  # a release gate is not an aggregator
+    ("gha/agg-discrim-coverage", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),  # a coverage upload job is not the gate
     # GT-NO-PROPAGATION
     ("gha/prop-good", "GT-NO-PROPAGATION", "PASS", 0),
     ("gha/prop-bad-unwired", "GT-NO-PROPAGATION", "FAIL", 1),
@@ -57,6 +58,7 @@ CASES = [
     ("py/exit-unknown", "EC-EXIT-BEFORE-ASSERT", "UNKNOWN", 0),
     ("py/exit-discrim-caught", "EC-EXIT-BEFORE-ASSERT", "PASS", 0),  # caught locally
     ("py/exit-unknown-double", "EC-EXIT-BEFORE-ASSERT", "UNKNOWN", 0),  # inside a test double
+    ("py/exit-unknown-fork", "EC-EXIT-BEFORE-ASSERT", "UNKNOWN", 0),  # child process after os.fork
     # EC-EQUALITY-OVERRIDE (eq-good is the required discrimination case)
     ("py/eq-good", "EC-EQUALITY-OVERRIDE", "PASS", 0),
     ("py/eq-bad-impl", "EC-EQUALITY-OVERRIDE", "FAIL", 1),
@@ -72,6 +74,9 @@ CASES = [
     ("py/runner-bad-pyfunc", "EC-RUNNER-PATCHED", "FAIL", 1),
     ("py/runner-bad-unittest", "EC-RUNNER-PATCHED", "FAIL", 2),
     ("py/runner-discrim-nested", "EC-RUNNER-PATCHED", "UNKNOWN", 0),  # hook on a nested pytester session
+    ("py/live-data", "EC-RUNNER-PATCHED", "PASS", 0),  # conftest in a data dir pytest never loads
+    ("py/live-data", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # lint input under tests/functional is data
+    ("py/live-data", "EC-EQUALITY-OVERRIDE", "FAIL", 1),  # imported helper is live test code
     ("py/runner-discrim-nested", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # pytest.fail.Exception is not Exception
     # EC-TESTS-NOT-RUN
     ("py/notrun-good", "EC-TESTS-NOT-RUN", "PASS", 0),
@@ -87,6 +92,8 @@ CASES = [
     ("py/noassert-good", "EC-NO-ASSERTION", "PASS", 0),
     ("py/noassert-bad", "EC-NO-ASSERTION", "FAIL", 3),
     ("py/noassert-discrim-helpers", "EC-NO-ASSERTION", "PASS", 0),  # decorator, support-module helper, test calling a test
+    ("py/noassert-discrim-r2", "EC-NO-ASSERTION", "PASS", 0),  # partial, callable class, fixture closure, RaisesGroup
+    ("py/noassert-unknown-codestring", "EC-NO-ASSERTION", "UNKNOWN", 0),  # asserts only inside executed code
     # EC-MOCK-ONLY
     ("py/mock-good", "EC-MOCK-ONLY", "PASS", 0),
     ("py/mock-bad", "EC-MOCK-ONLY", "FAIL", 2),
@@ -102,10 +109,44 @@ CASES = [
     ("py/nonstd-good", "EC-ASSERTION-NONSTANDARD", "PASS", 0),
     ("py/nonstd-bad", "EC-ASSERTION-NONSTANDARD", "FAIL", 9),
     ("py/nonstd-discrim-r1", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # caching identity, recording handler, else-raise, later raise
+    # JavaScript / TypeScript
+    ("js/good", "EC-NO-ASSERTION-JS", "PASS", 0),  # helper, getByText, each, awaited/returned resolves
+    ("js/noassert-bad", "EC-NO-ASSERTION-JS", "FAIL", 2),
+    ("js/good-r2", "EC-NO-ASSERTION-JS", "PASS", 0),  # supertest .expect, .bind alias, asserting callback
+    ("js/good-r2", "EC-ASSERTION-NONSTANDARD-JS", "PASS", 0),  # stateful matcher on a literal, assert(0) guard
+    ("js/good-r3", "EC-TESTS-NOT-RUN-JS", "PASS", 0),  # local function named test; each with a function reference
+    ("js/good-r3", "EC-NO-ASSERTION-JS", "PASS", 0),
+    ("js/good-r3", "EC-ASSERTION-NONSTANDARD-JS", "PASS", 0),  # local assert(); literals that differ (always fails)
+    ("js/good", "EC-TESTS-NOT-RUN-JS", "PASS", 0),
+    ("js/notrun-bad", "EC-TESTS-NOT-RUN-JS", "FAIL", 5),  # skip, xit, todo, pending, xdescribe
+    ("js/notrun-only", "EC-TESTS-NOT-RUN-JS", "FAIL", 1),  # .only under jest excludes siblings
+    ("js/notrun-only-vitest", "EC-TESTS-NOT-RUN-JS", "PASS", 0),  # vitest fails CI runs on .only
+    ("js/notrun-only-unknownfw", "EC-TESTS-NOT-RUN-JS", "UNKNOWN", 0),
+    ("js/good", "EC-ASSERTION-NONSTANDARD-JS", "PASS", 0),
+    ("js/nonstd-bad", "EC-ASSERTION-NONSTANDARD-JS", "FAIL", 4),  # bare, uncalled, constant, unawaited
+    ("js/nonstd-chai", "EC-ASSERTION-NONSTANDARD-JS", "PASS", 0),  # chai property assertions are real
+    ("js/exit-good", "EC-EXIT-BEFORE-ASSERT-JS", "PASS", 0),
+    ("js/exit-bad", "EC-EXIT-BEFORE-ASSERT-JS", "FAIL", 1),
+    ("js/good", "EC-RUNNER-PATCHED-JS", "PASS", 0),  # a real custom matcher computes pass
+    ("js/runner-bad", "EC-RUNNER-PATCHED-JS", "FAIL", 2),  # always-pass matcher, reassigned it
 ]
 
+JS = [c for c in CHECK_ORDER if c.endswith("-JS")]
+
+
+@pytest.mark.parametrize("check", JS)
+def test_js_unparseable_unknown(check):
+    res = run("js/malformed")[check]
+    assert res["verdict"] == "UNKNOWN", res
+    assert any("parse failure" in u["message"] for u in res["unknowns"])
+
+
+@pytest.mark.parametrize("check", JS)
+def test_js_no_tests_unknown(check):
+    assert run("js/no-tests")[check]["verdict"] == "UNKNOWN"
+
 GT = [c for c in CHECK_ORDER if c.startswith("GT-")]
-EC = [c for c in CHECK_ORDER if c.startswith("EC-")]
+EC = [c for c in CHECK_ORDER if c.startswith("EC-") and not c.endswith("-JS")]
 MALFORMED_GHA = ["malformed-syntax", "malformed-dupkey", "malformed-merge", "malformed-shape", "malformed-binary", "malformed-empty"]
 
 _cache = {}

@@ -50,6 +50,26 @@ CATALOG = {
         "Implementation special-cases the test",
         "Code returns the expected answer for the test's input only, or behaves differently under test.",
     ),
+    "EC-EXIT-BEFORE-ASSERT-JS": (
+        "JS/TS: process exits with success in a test file",
+        "process.exit(0) ends the runner with success before remaining assertions run.",
+    ),
+    "EC-RUNNER-PATCHED-JS": (
+        "JS/TS: test primitives or matchers rewritten",
+        "A custom matcher that always passes, or reassigned expect/it/test, makes failures report as passes.",
+    ),
+    "EC-TESTS-NOT-RUN-JS": (
+        "JS/TS: tests present but never run",
+        "Skipped, todo and pending tests, and tests excluded by a committed .only, count as evidence without executing.",
+    ),
+    "EC-NO-ASSERTION-JS": (
+        "JS/TS: test without assertion",
+        "The test passes whenever the code does not throw; it cannot detect a wrong answer.",
+    ),
+    "EC-ASSERTION-NONSTANDARD-JS": (
+        "JS/TS: assertion that cannot fail or may not run",
+        "A bare expect(), an uncalled matcher, literal-vs-literal, or an unawaited .resolves/.rejects verifies nothing.",
+    ),
     "EC-ASSERTION-NONSTANDARD": (
         "Assertion that cannot fail or cannot run",
         "Looks like verification, verifies nothing.",

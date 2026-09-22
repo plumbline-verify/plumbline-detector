@@ -34,7 +34,7 @@ def to_sarif(record: dict) -> str:
                 "name": c["id"].replace("-", ""),
                 "shortDescription": {"text": title},
                 "fullDescription": {"text": prevents},
-                "properties": {"verdict": c["verdict"]},
+                "properties": {"verdict": c["verdict"], "measured_precision": c["measured_precision"]},
             }
         )
         for f in c["findings"]:
@@ -82,6 +82,14 @@ def to_sarif(record: dict) -> str:
     return json.dumps(sarif, indent=2, sort_keys=True) + "\n"
 
 
+def _precision_cell(m) -> str:
+    if not m:
+        return "not measured"
+    lo, hi = m["ci95"]
+    star = "" if m["same_ruleset"] else "*"
+    return f"{m['precision']:.0%}{star} ({lo:.0%}–{hi:.0%}, n={m['labeled']})"
+
+
 def to_markdown(record: dict) -> str:
     p, inv, s = record["provenance"], record["inventory"], record["summary"]
     out = [
@@ -97,14 +105,21 @@ def to_markdown(record: dict) -> str:
         "It is not a certificate that the evidence is real. UNKNOWN means the check could not decide "
         "(nothing in scope, or something unreadable or unrecognized); it is never counted as a pass.",
         "",
-        "| Check | Verdict | Findings | Not evaluated | What it guards against |",
-        "|---|---|---|---|---|",
+        "| Check | Verdict | Findings | Not evaluated | Measured precision | What it guards against |",
+        "|---|---|---|---|---|---|",
     ]
+    stale = False
     for c in record["checks"]:
         title, _ = CATALOG[c["id"]]
         basis = f" ({c['basis']})" if c.get("basis") not in (None, "declared") else ""
-        out.append(f"| `{c['id']}` | {c['verdict']}{basis} | {len(c['findings'])} | {len(c['unknowns'])} | {title} |")
+        out.append(f"| `{c['id']}` | {c['verdict']}{basis} | {len(c['findings'])} | {len(c['unknowns'])} | {_precision_cell(c['measured_precision'])} | {title} |")
+        stale = stale or bool(c["measured_precision"] and not c["measured_precision"]["same_ruleset"])
     out += [
+        "",
+        "Measured precision is the share of this check's findings that independent reviewers confirmed "
+        "on repositories the detector had not been tuned on (docs/PRECISION_STUDY.md): "
+        "precision, 95% interval, and sample size."
+        + (" Values marked * were measured on an earlier version of the check code." if stale else ""),
         "",
         f"Inventory: primary language {inv['primary_language'] or 'none'}, "
         f"{inv['loc_nonblank_total']:,} non-blank lines, {inv['test_file_count']} Python test files, "

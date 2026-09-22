@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 
 from ..model import Location
 
-TEST_DIR_NAMES = frozenset({"tests", "test"})
+TEST_DIR_NAMES = frozenset({"tests", "test", "_tests"})
 # Directories that conventionally hold inputs for tests (lint fixtures,
 # example scripts, snapshots), not test code. A .py file there is classified
 # as data only if its directory is not a package (no __init__.py) and it is

@@ -1,0 +1,144 @@
+{
+  "rounds": [
+    {
+      "checks": {
+        "EC-ASSERTION-NONSTANDARD": {
+          "fp_detector": 18,
+          "fp_scope": 2,
+          "labeled": 40,
+          "pool": 43,
+          "tp": 20
+        },
+        "EC-EQUALITY-OVERRIDE": {
+          "fp_detector": 1,
+          "fp_scope": 1,
+          "labeled": 2,
+          "pool": 2,
+          "tp": 0
+        },
+        "EC-EXIT-BEFORE-ASSERT": {
+          "fp_detector": 3,
+          "fp_scope": 0,
+          "labeled": 3,
+          "pool": 3,
+          "tp": 0
+        },
+        "EC-MOCK-ONLY": {
+          "fp_detector": 1,
+          "fp_scope": 0,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 0
+        },
+        "EC-NO-ASSERTION": {
+          "fp_detector": 12,
+          "fp_scope": 2,
+          "labeled": 40,
+          "pool": 568,
+          "tp": 26
+        },
+        "EC-SPECIAL-CASED": {
+          "fp_detector": 2,
+          "fp_scope": 0,
+          "labeled": 2,
+          "pool": 2,
+          "tp": 0
+        },
+        "EC-TESTS-NOT-RUN": {
+          "fp_detector": 2,
+          "fp_scope": 0,
+          "labeled": 19,
+          "pool": 19,
+          "tp": 17
+        },
+        "GT-AGGREGATOR-PERMISSIVE": {
+          "fp_detector": 0,
+          "fp_scope": 1,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 0
+        },
+        "GT-CONTINUE-ON-ERROR": {
+          "fp_detector": 2,
+          "fp_scope": 0,
+          "labeled": 3,
+          "pool": 3,
+          "tp": 1
+        },
+        "GT-SKIP-SATISFIES": {
+          "fp_detector": 0,
+          "fp_scope": 1,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 0
+        }
+      },
+      "date": "2026-09-22",
+      "detector_commit": "ebeaaf0",
+      "repositories": 20,
+      "round": 1,
+      "ruleset_fingerprint": "sha256:3dc55876e94295047850de8c6df2aacdc8bea90303d712c25c60f6a30b75792b",
+      "schema": "1.1.0"
+    },
+    {
+      "checks": {
+        "EC-ASSERTION-NONSTANDARD": {
+          "fp_detector": 0,
+          "fp_scope": 12,
+          "labeled": 19,
+          "pool": 19,
+          "tp": 7
+        },
+        "EC-EQUALITY-OVERRIDE": {
+          "fp_detector": 0,
+          "fp_scope": 1,
+          "labeled": 6,
+          "pool": 6,
+          "tp": 5
+        },
+        "EC-EXIT-BEFORE-ASSERT": {
+          "fp_detector": 1,
+          "fp_scope": 4,
+          "labeled": 5,
+          "pool": 5,
+          "tp": 0
+        },
+        "EC-NO-ASSERTION": {
+          "fp_detector": 15,
+          "fp_scope": 0,
+          "labeled": 40,
+          "pool": 273,
+          "tp": 25
+        },
+        "EC-TESTS-NOT-RUN": {
+          "fp_detector": 0,
+          "fp_scope": 3,
+          "labeled": 7,
+          "pool": 7,
+          "tp": 4
+        },
+        "GT-AGGREGATOR-PERMISSIVE": {
+          "fp_detector": 0,
+          "fp_scope": 1,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 0
+        },
+        "GT-CONTINUE-ON-ERROR": {
+          "fp_detector": 0,
+          "fp_scope": 0,
+          "labeled": 5,
+          "pool": 5,
+          "tp": 5
+        }
+      },
+      "date": "2026-09-22",
+      "detector_commit": "dfb2c43",
+      "repositories": 20,
+      "round": 2,
+      "ruleset_fingerprint": "sha256:2db2c62cd6808bab42af532fe03d7a080afb1f0159614b65d0b1e43673dd0410",
+      "schema": "1.2.0"
+    }
+  ],
+  "source": "docs/PRECISION_STUDY.md"
+}

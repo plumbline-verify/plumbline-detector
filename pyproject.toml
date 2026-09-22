@@ -9,7 +9,7 @@ description = "Static, artifact-only detector of hollow verification evidence in
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "tree-sitter>=0.25,<0.27", "tree-sitter-javascript>=0.25,<0.26", "tree-sitter-typescript>=0.23,<0.24"]
 
 [project.optional-dependencies]
 test = ["pytest>=7", "jsonschema>=4"]
@@ -22,7 +22,7 @@ plumbline-diff = "plumbline_detector.cli:diff_main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-plumbline_detector = ["fingerprint.json"]
+plumbline_detector = ["fingerprint.json", "measurements.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

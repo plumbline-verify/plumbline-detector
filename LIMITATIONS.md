@@ -105,7 +105,13 @@ detector never does.
   configuration.** Files the pytest configuration collects (`python_files`)
   are treated as tests; test helpers outside `tests/`/`test/` directories that
   no configuration collects are treated as implementation code.
-- **Test-data classification can hide code.** A non-package `.py` file under
+- **Test-data classification can hide code.** A test-path file that pytest
+  does not collect, that no test code imports statically, and whose name is
+  not test-like is treated as data. Code loaded dynamically (`importlib`,
+  `sys.path` manipulation plus a string import, `runpy`, a plugin entry point)
+  is invisible to the import graph, so a hollow helper loaded that way is not
+  analyzed. The rule applies only when pytest is evidently the runner and an
+  invocation resolves; otherwise nothing is reclassified. Also, a non-package `.py` file under
   `fixtures/`, `resources/`, `testdata/`, `test_data/`, `example_scripts/` or
   `snapshots/` is treated as data and not analyzed. A hollow helper placed
   there and imported via `sys.path` manipulation would be missed. `conftest.py`,
@@ -200,6 +206,35 @@ detector never does.
 - Only pytest is modeled. For `unittest`, `nose2`, Django's test runner and
   others, only unconditional skips are evaluated.
 
+## JavaScript / TypeScript
+
+- **Newer than first.** The JS/TS checks were built after the Python ones
+  and tuned on five repositories (express, vue core, axios, chalk, vite).
+  Their precision on unseen code is unmeasured until a study round
+  includes them.
+- **Grammar coverage.** tree-sitter's TypeScript grammar at the pinned
+  version rejects some valid TypeScript (for example `typeof import('./x')`
+  in a type position). Such a file is a parse failure and makes the JS
+  checks UNKNOWN; it is never analyzed partially. Flow-typed `.js` files fail
+  the same way.
+- Test discovery is by naming convention and `it`/`test` calls. Custom test
+  registrars (`defineTest(...)`, table-driven wrappers), Playwright's
+  `test.describe` chains, and runner configuration (`testMatch`,
+  `testPathIgnorePatterns`, `include`/`exclude` in vitest config) are not
+  modeled: a test excluded by runner configuration is not reported as not
+  run, and a file excluded by it is still analyzed.
+- Framework semantics come from `package.json`. `.only` handling depends on
+  it; `mocha --forbid-only` and jest configuration are not read.
+- Assertion helpers are followed by name within test and test-utility
+  files. Helpers imported from other packages, fixtures from test contexts
+  (`test.extend`), and matchers added by `expect.extend` elsewhere are not
+  followed.
+- `EC-RUNNER-PATCHED-JS` examines only files that follow test conventions or
+  live under `test/`; jest `setupFiles`, custom reporters, and
+  `testResultsProcessor` are not read.
+- TypeScript types are not checked: `expect(x).toBe(y)` where types make it
+  vacuous is not detected.
+
 ## Things the record itself cannot vouch for
 
 - The snapshot is whatever directory was given. The detector cannot tell
@@ -214,12 +249,25 @@ detector never does.
   are counted, and unread files in a check's scope make it UNKNOWN, but
   content reachable only through a symlink is simply absent.
 
+## Measured precision in the output
+
+Each check carries its most recent measurement from the precision study. That
+number describes that check's findings on twenty open-source Python
+projects at one point in time, as judged by review agents under a fixed
+rubric; it is not a guarantee for any other codebase. When `same_ruleset` is
+false the measurement was made on earlier check code, and the current code's
+precision is unmeasured until the next round. Checks with no measurement
+have never produced a finding in a study round; their precision is unknown,
+not high.
+
 ## Calibration
 
-Nothing here has been calibrated against labeled data. The acceptance run
-(docs/ACCEPTANCE.md) is seven repositories chosen by hand, triaged by
-sampling, not by exhaustive review. No precision or recall figure in this
-repository should be read as a measured rate. Phase B (Auditing Sabotage
-Bench) is the first planned measurement; expect it to be sobering, since
+Precision has been measured, recall has not. Two pre-registered rounds of
+twenty held-out repositories each (docs/PRECISION_STUDY.md) put overall
+precision at about 55%, with wide per-check differences. Those rounds used
+open-source Python projects that are presumed not to contain deliberate
+tampering, so they say nothing about how many real defects, or how many
+adversarial ones, the detector misses. Phase B (Auditing Sabotage Bench) is
+the first planned recall measurement; expect it to be sobering, since
 sabotaged evaluation code in ML repositories mostly corrupts *what is
 computed*, which is the outcome gap this detector does not address.
