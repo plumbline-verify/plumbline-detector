@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plumbline-detector/record/1.0.0",
+  "title": "Plumbline detector record",
+  "description": "One record per repository snapshot. schema_version changes whenever the record format or the semantics of any check change; provenance.ruleset_fingerprint identifies the exact check code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool", "provenance", "repo", "inventory", "summary", "checks"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "tool": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version"],
+      "properties": {"name": {"const": "plumbline-detector"}, "version": {"type": "string"}}
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ruleset_fingerprint", "operator_set", "config", "config_hash", "environment", "commit_sha", "commit_sha_source", "timestamp", "timestamp_source"],
+      "properties": {
+        "ruleset_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "SHA-256 over the source of every module that defines check semantics."},
+        "operator_set": {"type": "array", "items": {"type": "string"}, "description": "Check IDs run, in record order."},
+        "config": {"type": "object", "description": "Effective configuration: operator-supplied required checks, gate files (by hash), exclusions, limits."},
+        "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "environment": {"type": "object", "description": "Interpreter and parser versions. The Python grammar accepted depends on the interpreter version."},
+        "commit_sha": {"type": ["string", "null"]},
+        "commit_sha_source": {"type": "string", "description": "operator | git_ref | git_packed_ref | git_head_detached | no_git_metadata | ... (why it is null)"},
+        "timestamp": {"type": ["string", "null"]},
+        "timestamp_source": {"enum": ["not_supplied", "operator", "SOURCE_DATE_EPOCH", "wall_clock"]}
+      }
+    },
+    "repo": {
+      "type": "object", "additionalProperties": false, "required": ["content_id", "label_sha256"],
+      "properties": {
+        "content_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Content address of the snapshot: SHA-256 over sorted (path, file SHA-256) pairs."},
+        "label_sha256": {"type": ["string", "null"], "description": "SHA-256 of an operator-supplied label; the label itself is never recorded."}
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "required": ["languages", "primary_language", "loc_nonblank_total", "test_file_count", "file_count", "unread_files", "excluded_dir_count", "symlinks_not_followed", "github_workflow_files"],
+      "properties": {
+        "languages": {"type": "object"},
+        "primary_language": {"type": ["string", "null"]},
+        "loc_nonblank_total": {"type": "integer"},
+        "test_file_count": {"type": "integer", "description": "Python files in test paths (see README)."},
+        "file_count": {"type": "integer"},
+        "unread_files": {"type": "array"},
+        "excluded_dir_count": {"type": "integer"},
+        "symlinks_not_followed": {"type": "integer"},
+        "github_workflow_files": {"type": "integer"}
+      }
+    },
+    "summary": {
+      "type": "object", "additionalProperties": false, "required": ["PASS", "FAIL", "UNKNOWN"],
+      "properties": {"PASS": {"type": "integer"}, "FAIL": {"type": "integer"}, "UNKNOWN": {"type": "integer"}}
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "verdict", "reason", "findings", "unknowns", "stats"],
+        "properties": {
+          "id": {"type": "string"},
+          "verdict": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+          "reason": {"type": "string"},
+          "basis": {"enum": ["declared", "inferred", "none"], "description": "GT checks only: where the required-check set came from."},
+          "findings": {"type": "array", "items": {"$ref": "#/$defs/location"}},
+          "unknowns": {"type": "array", "items": {"$ref": "#/$defs/location"}},
+          "stats": {"type": "object"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object", "additionalProperties": false, "required": ["file", "line", "message"],
+      "properties": {
+        "file": {"type": "string", "description": "Path relative to the snapshot root."},
+        "line": {"type": ["integer", "null"]},
+        "message": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+on:
+  pull_request:
+jobs:
+  test:
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-tests')"
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest

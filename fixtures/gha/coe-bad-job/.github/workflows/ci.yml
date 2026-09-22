@@ -1,0 +1,11 @@
+name: ci
+on: pull_request
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      matrix:
+        experimental: [false, true]
+    steps:
+      - run: npm test

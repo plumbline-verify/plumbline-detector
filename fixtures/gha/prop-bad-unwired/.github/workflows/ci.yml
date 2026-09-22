@@ -1,0 +1,11 @@
+name: ci
+on: pull_request
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ruff check .
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest

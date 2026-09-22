@@ -1,0 +1,9 @@
+name: ci
+on: pull_request
+x-defaults: &defaults
+  runs-on: ubuntu-latest
+jobs:
+  test:
+    <<: *defaults
+    steps:
+      - run: pytest

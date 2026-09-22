@@ -1,0 +1,17 @@
+name: ci
+on: pull_request
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ruff check .
+  summary:
+    if: always()
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.lint.result }}" = "success" ]'

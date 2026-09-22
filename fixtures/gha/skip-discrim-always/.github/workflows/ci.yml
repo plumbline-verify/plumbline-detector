@@ -1,0 +1,9 @@
+name: ci
+on: [pull_request]
+jobs:
+  test:
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pytest
