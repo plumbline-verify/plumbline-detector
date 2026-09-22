@@ -148,3 +148,26 @@ The detector was fixed after this round (next commit). Those fixes were made
 while looking at these twenty repositories, so this set can no longer
 measure the fixed detector's precision. A second round on a new,
 pre-registered set of repositories is needed to measure it.
+
+## Round 2 protocol (fixed before any run; committed before results)
+
+**Detector under test.** Commit `282dc09`, schema 1.2.0, ruleset fingerprint
+`sha256:2db2c62cd6808bab42af532fe03d7a080afb1f0159614b65d0b1e43673dd0410` (read from `fingerprint.json` at that commit, not copied by hand).
+No check code changes between the first round-2 run and the reported numbers.
+
+**Repositories.** Twenty public Python projects used in neither the
+development set (ACCEPTANCE.md) nor round 1, fixed here before cloning:
+
+encode/uvicorn, fastapi/typer, python-jsonschema/jsonschema,
+pallets/itsdangerous, urllib3/urllib3, pypa/pipx, pypa/virtualenv,
+pypa/build, PyCQA/flake8, PyCQA/isort, pylint-dev/pylint, sphinx-doc/sphinx,
+jazzband/pip-tools, joke2k/faker, arrow-py/arrow, dateutil/dateutil,
+Delgan/loguru, tqdm/tqdm, hynek/structlog, python-trio/trio.
+
+If a repository cannot be cloned, it is reported as missing, not replaced.
+
+**Sampling, labels, labelers, audit.** As in round 1: pool per check, label
+all if 40 or fewer, else 40 at random with seed 20260922; labels TP /
+FP-detector / FP-scope against the README definitions; independent labeling
+agents that do not see the detector code or round-1 results; the author
+audits a seeded random 20% (seed 20260923). GT-NO-GATE is not labeled.
