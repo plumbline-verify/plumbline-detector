@@ -388,7 +388,7 @@ def is_skippable_if(expr: str | None, triggers: set[str] = frozenset()) -> bool:
 
 def runs_always(job: Job, triggers: set[str] = frozenset()) -> bool:
     """True if the job runs even when a needed job failed, on every PR run:
-    the `if:` contains always()/!cancelled() and nothing that can be false
+    the `if:` contains `always()`/`!cancelled()` and nothing that can be false
     on a pull-request run."""
     if job.if_expr is None:
         return False

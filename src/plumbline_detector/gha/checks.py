@@ -174,7 +174,7 @@ def gt_continue_on_error(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
 def gt_aggregator_permissive(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
     """GT-AGGREGATOR-PERMISSIVE: an aggregator/summary job whose green does not
     mean its dependencies passed. Two shapes:
-      (a) no non-skipping `if:` (always() / !cancelled()): when a needed job
+      (a) no non-skipping `if:` (`always()` / `!cancelled()`): when a needed job
           fails, the aggregator is skipped, and a skipped job reports Success;
       (b) runs always but never inspects `needs.<job>.result` for some or all
           of its needs, so it passes whatever they did.
