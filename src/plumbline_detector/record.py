@@ -49,6 +49,8 @@ FINGERPRINT_MODULES = [
     "py/common.py",
     "py/assertions.py",
     "py/checks.py",
+    "catalog.py",
+    "render.py",
 ]
 
 

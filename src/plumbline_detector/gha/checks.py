@@ -191,12 +191,18 @@ def gt_aggregator_permissive(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
         return r
     for job in aggs:
         if not M.runs_always(job, job.triggers):
-            why = "has no `if:`" if job.if_expr is None else f"has `if: {job.if_expr}`"
+            if job.if_expr is None:
+                msg = f"aggregator {job.id!r} has no `if:`; when any of {job.needs} fails it is skipped and reports Success"
+            else:
+                msg = (
+                    f"aggregator {job.id!r} has `if: {job.if_expr}`, not an always-run condition; depending on its "
+                    f"dependencies' outcome it is skipped (reporting Success), so its green does not show that {job.needs} passed"
+                )
             r.findings.append(
                 Location(
                     job.workflow,
                     job.if_line or job.line,
-                    f"aggregator {job.id!r} {why}; when any of {job.needs} fails it is skipped and reports Success",
+                    msg,
                     {"job": job.id, "shape": "skippable"},
                 )
             )

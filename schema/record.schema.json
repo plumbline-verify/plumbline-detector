@@ -64,7 +64,7 @@
           "verdict": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
           "reason": {"type": "string"},
           "basis": {"enum": ["declared", "inferred", "none"], "description": "GT checks only: where the required-check set came from."},
-          "findings": {"type": "array", "items": {"$ref": "#/$defs/location"}},
+          "findings": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/location"}, {"required": ["id"]}]}},
           "unknowns": {"type": "array", "items": {"$ref": "#/$defs/location"}},
           "stats": {"type": "object"}
         }
@@ -75,6 +75,7 @@
     "location": {
       "type": "object", "additionalProperties": false, "required": ["file", "line", "message"],
       "properties": {
+        "id": {"type": "string", "pattern": "^[0-9a-f]{16}$", "description": "Findings only: stable identifier from check ID, file and message (not line), for diffing records over time."},
         "file": {"type": "string", "description": "Path relative to the snapshot root."},
         "line": {"type": ["integer", "null"]},
         "message": {"type": "string"},

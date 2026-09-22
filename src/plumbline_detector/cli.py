@@ -9,6 +9,7 @@ import sys
 
 from . import SCHEMA_VERSION, __version__
 from .record import analyze, dumps
+from .render import to_markdown, to_sarif
 
 
 def main(argv=None) -> int:
@@ -26,6 +27,9 @@ def main(argv=None) -> int:
     ap.add_argument("--commit-sha", help="commit SHA, when known but absent from the snapshot")
     ap.add_argument("--timestamp", help="ISO-8601 timestamp to record (keeps output deterministic)")
     ap.add_argument("--now", action="store_true", help="record the current UTC time (output is then not reproducible)")
+    ap.add_argument("--format", choices=["json", "sarif", "markdown"], default="json",
+                    help="json: the versioned record (default); sarif: SARIF 2.1.0 for code-scanning tools; "
+                         "markdown: a human-readable report")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__} (schema {SCHEMA_VERSION})")
     args = ap.parse_args(argv)
 
@@ -53,7 +57,7 @@ def main(argv=None) -> int:
         timestamp=ts,
         timestamp_source=ts_source,
     )
-    out = dumps(record)
+    out = {"json": dumps, "sarif": to_sarif, "markdown": to_markdown}[args.format](record)
     if args.out:
         with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(out)
@@ -64,3 +68,42 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def diff_main(argv=None) -> int:
+    """plumbline-diff OLD.json NEW.json: findings added and resolved between
+    two records of the same repository, matched by finding ID. Exit 1 if any
+    finding is new, so it can gate a pull request on regressions only."""
+    ap = argparse.ArgumentParser(prog="plumbline-diff", description=diff_main.__doc__)
+    ap.add_argument("old")
+    ap.add_argument("new")
+    args = ap.parse_args(argv)
+    import json
+
+    recs = []
+    for path in (args.old, args.new):
+        with open(path, encoding="utf-8") as fh:
+            recs.append(json.load(fh))
+    old, new = recs
+    if old["schema_version"] != new["schema_version"]:
+        print(f"note: schema versions differ ({old['schema_version']} -> {new['schema_version']}); "
+              "differences may come from the detector, not the repository", file=sys.stderr)
+
+    def index(rec):
+        return {(c["id"], f["id"]): f for c in rec["checks"] for f in c["findings"]}
+
+    a, b = index(old), index(new)
+    added = sorted(set(b) - set(a))
+    resolved = sorted(set(a) - set(b))
+    for key in added:
+        f = b[key]
+        print(f"+ {key[0]} {f['file']}:{f['line']}: {f['message']}")
+    for key in resolved:
+        f = a[key]
+        print(f"- {key[0]} {f['file']}:{f['line']}: {f['message']}")
+    verdicts_old = {c["id"]: c["verdict"] for c in old["checks"]}
+    for c in new["checks"]:
+        if verdicts_old.get(c["id"]) != c["verdict"]:
+            print(f"~ {c['id']}: {verdicts_old.get(c['id'])} -> {c['verdict']}")
+    print(f"{len(added)} new, {len(resolved)} resolved")
+    return 1 if added else 0

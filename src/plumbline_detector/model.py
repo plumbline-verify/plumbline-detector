@@ -8,6 +8,7 @@ parse failure, or unrecognized construct in the check's domain prevents PASS
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 PASS = "PASS"
@@ -22,8 +23,16 @@ class Location:
     message: str
     detail: dict = field(default_factory=dict)
 
-    def to_json(self) -> dict:
+    def finding_id(self, check_id: str) -> str:
+        """Stable across line shifts: check, file and message, not line.
+        Used to diff records of the same repository over time."""
+        h = hashlib.sha256(f"{check_id}\0{self.file}\0{self.message}".encode("utf-8", "surrogateescape"))
+        return h.hexdigest()[:16]
+
+    def to_json(self, check_id: str | None = None) -> dict:
         out = {"file": self.file, "line": self.line, "message": self.message}
+        if check_id is not None:
+            out["id"] = self.finding_id(check_id)
         if self.detail:
             out["detail"] = self.detail
         return out
@@ -65,7 +74,7 @@ class CheckResult:
             "id": self.check_id,
             "verdict": self.verdict,
             "reason": self.reason(),
-            "findings": [f.to_json() for f in sorted(self.findings, key=Location.sort_key)],
+            "findings": [f.to_json(self.check_id) for f in sorted(self.findings, key=Location.sort_key)],
             "unknowns": [u.to_json() for u in sorted(self.unknowns, key=Location.sort_key)],
             "stats": dict(sorted(self.stats.items())),
         }

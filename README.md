@@ -36,6 +36,18 @@ Options:
 | `--commit-sha SHA` | The commit, when known but absent from the snapshot (for example a zip without `.git`). |
 | `--timestamp ISO` | A timestamp to record. `SOURCE_DATE_EPOCH` is honored too. |
 | `--now` | Record the wall-clock time. The output is then no longer reproducible. |
+| `--format json\|sarif\|markdown` | `json` (default) is the versioned record. `sarif` is SARIF 2.1.0 for code-scanning tools (GitHub code scanning, IDEs): findings at level `error`, UNKNOWN locations at level `note`. `markdown` is a human-readable report for a data room or an audit memo. Both are pure renderings of the record. |
+
+Compare two records of the same repository (for example the base and head of
+a pull request):
+
+```sh
+plumbline-diff base.json head.json   # prints + new, - resolved, ~ verdict changes; exit 1 if anything is new
+```
+
+Findings are matched by `id`, a hash of check, file and message that does not
+change when lines shift. This gates a pull request on *regressions* without
+requiring an existing codebase to be clean first.
 
 Exit status is 0 when a record was produced (whatever the verdicts), 2 on
 usage errors.
