@@ -1,0 +1,15 @@
+name: ci
+on: [pull_request, merge_group]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest
+  all-green:
+    if: always() && github.event_name == 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

@@ -1,0 +1,24 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest
+  required-checks-passed:
+    name: all required checks passed
+    if: ${{ always() && github.ref != 'refs/heads/main' }}
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: check
+        run: |
+          failing=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
+          if [ -n "$failing" ]; then
+            exit 1
+          fi
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}

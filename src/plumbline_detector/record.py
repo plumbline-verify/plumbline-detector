@@ -95,6 +95,7 @@ def analyze(
     gate = gha_model.gate_info(snap, required_checks, gate_files)
     pm = py_common.build(snap)
     ctx = Context(snap)
+    data_set = set(pm.data_paths)
     results = {}
     for fn in gha_checks.ALL:
         res = fn(gm, gate)
@@ -133,8 +134,8 @@ def analyze(
             "content_id": snap.content_id(),
             "label_sha256": hashlib.sha256(label.encode()).hexdigest() if label else None,
         },
-        "inventory": snapshot.inventory(snap, py_common.is_test_path)
-        | {"github_workflow_files": len(gm.workflow_paths)},
+        "inventory": snapshot.inventory(snap, lambda p: py_common.is_test_path(p) and p not in data_set)
+        | {"github_workflow_files": len(gm.workflow_paths), "python_test_data_files": len(pm.data_paths)},
         "summary": summary,
         "checks": checks,
     }

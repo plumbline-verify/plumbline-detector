@@ -36,7 +36,7 @@
     },
     "inventory": {
       "type": "object",
-      "required": ["languages", "primary_language", "loc_nonblank_total", "test_file_count", "file_count", "unread_files", "excluded_dir_count", "symlinks_not_followed", "github_workflow_files"],
+      "required": ["languages", "primary_language", "loc_nonblank_total", "test_file_count", "file_count", "unread_files", "excluded_dir_count", "symlinks_not_followed", "github_workflow_files", "python_test_data_files"],
       "properties": {
         "languages": {"type": "object"},
         "primary_language": {"type": ["string", "null"]},
@@ -46,7 +46,8 @@
         "unread_files": {"type": "array"},
         "excluded_dir_count": {"type": "integer"},
         "symlinks_not_followed": {"type": "integer"},
-        "github_workflow_files": {"type": "integer"}
+        "github_workflow_files": {"type": "integer"},
+        "python_test_data_files": {"type": "integer", "description": "Python files classified as test inputs (fixture/resource data), counted but not analyzed."}
       }
     },
     "summary": {

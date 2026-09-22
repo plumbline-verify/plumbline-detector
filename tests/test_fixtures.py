@@ -17,6 +17,8 @@ CASES = [
     ("gha/skip-discrim-always", "GT-SKIP-SATISFIES", "PASS", 0),
     ("gha/skip-bad", "GT-SKIP-SATISFIES", "FAIL", 1),
     ("gha/skip-bad-matrix", "GT-SKIP-SATISFIES", "FAIL", 1),
+    ("gha/skip-discrim-pr-true", "GT-SKIP-SATISFIES", "PASS", 0),  # skip only possible on push to main
+    ("gha/skip-bad-merge-queue", "GT-SKIP-SATISFIES", "FAIL", 1),  # skipped on merge_group events
     ("gha/agg-absent", "GT-SKIP-SATISFIES", "UNKNOWN", 0),  # nothing declared, nothing to infer
     # GT-CONTINUE-ON-ERROR
     ("gha/coe-good", "GT-CONTINUE-ON-ERROR", "PASS", 0),
@@ -26,6 +28,9 @@ CASES = [
     # GT-AGGREGATOR-PERMISSIVE
     ("gha/agg-good-allsgreen", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
     ("gha/agg-good-explicit", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
+    ("gha/agg-good-tojson", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
+    ("gha/skip-discrim-pr-true", "GT-AGGREGATOR-PERMISSIVE", "PASS", 0),
+    ("gha/skip-bad-merge-queue", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-bad-skippable", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-bad-unverified", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),
     ("gha/agg-bad-partial", "GT-AGGREGATOR-PERMISSIVE", "FAIL", 1),

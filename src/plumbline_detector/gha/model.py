@@ -103,6 +103,7 @@ class Job:
     coe_line: int | None
     has_matrix: bool
     raw_texts: list[str]
+    triggers: frozenset = frozenset()
 
     @property
     def display(self) -> str:
@@ -271,6 +272,7 @@ def build(snap) -> GHAModel:
             for jid, jraw in jobs_raw.items():
                 job = _parse_job(p, jid, jraw, m.issues)
                 if job is not None:
+                    job.triggers = frozenset(triggers)
                     jobs[jid] = job
             for job in jobs.values():
                 for n in job.needs:
@@ -318,12 +320,84 @@ def job_test_status(model: GHAModel, job: Job, _seen=None) -> str:
     return "no"
 
 
-def is_skippable_if(expr: str | None) -> bool:
-    return expr is not None and norm_expr(expr) not in NON_SKIPPING_IFS
+# Conjuncts that are true on every pull-request-triggered run, so a job-level
+# `if:` built only from them and NON_SKIPPING_IFS cannot skip the job on a PR.
+_PR_TRUE_CONJUNCTS = [
+    re.compile(r"^github\.ref != '(?!refs/heads/gh-readonly-queue)refs/(heads|tags)/[^']*'$"),
+    re.compile(r"^github\.event_name != '(push|schedule|workflow_dispatch|release|workflow_call|repository_dispatch|workflow_run)'$"),
+]
 
 
-def runs_always(job: Job) -> bool:
-    return job.if_expr is not None and norm_expr(job.if_expr) in NON_SKIPPING_IFS
+def _strip_parens(s: str) -> str:
+    while s.startswith("(") and s.endswith(")"):
+        depth = 0
+        for i, ch in enumerate(s):
+            depth += ch == "("
+            depth -= ch == ")"
+            if depth == 0 and i < len(s) - 1:
+                return s
+        s = s[1:-1].strip()
+    return s
+
+
+def _split_top(s: str, op: str) -> list[str]:
+    parts, depth, quote, start, i = [], 0, False, 0, 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "'":
+            quote = not quote
+        elif not quote:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif depth == 0 and s.startswith(op, i):
+                parts.append(s[start:i].strip())
+                i += len(op)
+                start = i
+                continue
+        i += 1
+    parts.append(s[start:].strip())
+    return parts
+
+
+def _conjuncts(expr: str) -> list[str] | None:
+    e = _strip_parens(norm_expr(expr))
+    if e in NON_SKIPPING_IFS:
+        return [e]
+    if len(_split_top(e, "||")) > 1:
+        return None
+    return [_strip_parens(c) for c in _split_top(e, "&&")]
+
+
+def _pr_true(c: str, triggers: set[str]) -> bool:
+    if c in NON_SKIPPING_IFS or any(p.match(c) for p in _PR_TRUE_CONJUNCTS):
+        return True
+    return c == "github.event_name == 'pull_request'" and set(triggers) & PR_EVENTS == {"pull_request"}
+
+
+def _cannot_skip_on_pr(expr: str, triggers: set[str]) -> bool:
+    cs = _conjuncts(expr)
+    return cs is not None and all(_pr_true(c, triggers) for c in cs)
+
+
+def is_skippable_if(expr: str | None, triggers: set[str] = frozenset()) -> bool:
+    """True unless the expression provably cannot be false on a PR run."""
+    return expr is not None and not _cannot_skip_on_pr(expr, triggers)
+
+
+def runs_always(job: Job, triggers: set[str] = frozenset()) -> bool:
+    """True if the job runs even when a needed job failed, on every PR run:
+    the `if:` contains always()/!cancelled() and nothing that can be false
+    on a pull-request run."""
+    if job.if_expr is None:
+        return False
+    cs = _conjuncts(job.if_expr)
+    return (
+        cs is not None
+        and any(c in NON_SKIPPING_IFS - {"true"} for c in cs)
+        and all(_pr_true(c, triggers) for c in cs)
+    )
 
 
 def _trivial_step(step: Step) -> bool:
@@ -359,10 +433,13 @@ def verification(job: Job) -> tuple[str, set[str]]:
     covered is the set of need names verified ('*' means all).
     """
     for s in job.steps:
+        whole_needs = any("tojson(needs)" in re.sub(r"\s+", "", t.lower()) for t in s.texts)
         if s.uses and ALLS_GREEN_RE.match(s.uses):
-            if any("tojson(needs)" in re.sub(r"\s+", "", t.lower()) for t in s.texts):
+            if whole_needs:
                 return "alls-green", {"*"}
             return "unrecognized", set()
+        if whole_needs and s.run is not None and re.search(r"\bexit\s+1\b", s.run) and ".result" in s.run:
+            return "explicit", {"*"}
     covered: set[str] = set()
     referenced = False
     for s in job.steps:

@@ -371,38 +371,55 @@ def ec_runner_patched(pm: PyModel, ctx) -> CheckResult:
     domain = [pf for pf in pm.files.values() if pf.is_test or pf.path.endswith("conftest.py") or _defines_pytest_hooks(pf)]
     r = _base("EC-RUNNER-PATCHED", pm, pm.test_paths)
     hooks_seen = 0
-    for pf in domain:
-        for node in ast.walk(pf.tree):
-            # patch calls
-            if isinstance(node, ast.Call):
-                target = _patch_target(node, pf.imports)
-                if target and _is_runner_target(target):
-                    r.findings.append(_loc(pf, node, f"patches test-reporting machinery: {target}", target=target))
-            # direct assignment to reporting machinery
-            if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                for t in targets:
-                    if isinstance(t, ast.Attribute):
-                        qn = qualname(t, pf.imports) or ""
-                        if _is_runner_target(qn):
-                            r.findings.append(_loc(pf, node, f"assigns to test-reporting machinery: {qn}", target=qn))
-                        elif t.attr in ("outcome",) and isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and node.value.value == "passed":
-                            r.findings.append(_loc(pf, node, "sets a result outcome to 'passed'"))
-                    elif isinstance(t, ast.Name) and t.id == "AssertionError":
-                        r.findings.append(_loc(pf, node, "rebinds AssertionError"))
-            # hooks
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in REPORT_HOOKS:
-                hooks_seen += 1
-                _judge_hook(pf, node, r)
-            if isinstance(node, ast.ClassDef):
-                bases = [(dotted(b) or "").split(".")[-1] for b in node.bases]
-                if any(b in ("TestResult", "TextTestResult") for b in bases):
-                    _judge_result_class(pf, node, r)
+    for pf in sorted(domain, key=lambda f: f.path):
+        if not pf.is_test:
+            # A pytest plugin shipped as implementation code (or a test
+            # framework's own source) rewrites reporting by design; the same
+            # constructs are reported, but as UNKNOWN, not FAIL.
+            sub = CheckResult("sub")
+            n = _scan_runner(pf, sub)
+            hooks_seen += n
+            r.unknowns.extend(
+                Location(x.file, x.line, "in a pytest plugin outside test paths: " + x.message, x.detail) for x in sub.findings + sub.unknowns
+            )
+            continue
+        hooks_seen += _scan_runner(pf, r)
     r.had_input = bool(pm.test_paths)
     if not r.had_input:
         r.absent_reason = NO_TESTS
     r.stats = {"files_examined": len(domain), "reporting_hooks_examined": hooks_seen}
     return r
+
+
+def _scan_runner(pf, r: CheckResult) -> int:
+    hooks_seen = 0
+    for node in ast.walk(pf.tree):
+        # patch calls
+        if isinstance(node, ast.Call):
+            target = _patch_target(node, pf.imports)
+            if target and _is_runner_target(target):
+                r.findings.append(_loc(pf, node, f"patches test-reporting machinery: {target}", target=target))
+        # direct assignment to reporting machinery
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                if isinstance(t, ast.Attribute):
+                    qn = qualname(t, pf.imports) or ""
+                    if _is_runner_target(qn):
+                        r.findings.append(_loc(pf, node, f"assigns to test-reporting machinery: {qn}", target=qn))
+                    elif t.attr in ("outcome",) and isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and node.value.value == "passed":
+                        r.findings.append(_loc(pf, node, "sets a result outcome to 'passed'"))
+                elif isinstance(t, ast.Name) and t.id == "AssertionError":
+                    r.findings.append(_loc(pf, node, "rebinds AssertionError"))
+        # hooks
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in REPORT_HOOKS:
+            hooks_seen += 1
+            _judge_hook(pf, node, r)
+        if isinstance(node, ast.ClassDef):
+            bases = [(dotted(b) or "").split(".")[-1] for b in node.bases]
+            if any(b in ("TestResult", "TextTestResult") for b in bases):
+                _judge_result_class(pf, node, r)
+    return hooks_seen
 
 
 def _judge_hook(pf, fn, r: CheckResult):
@@ -688,8 +705,9 @@ def ec_special_cased(pm: PyModel, ctx) -> CheckResult:
     PYTEST_CURRENT_TEST, sys._called_from_test, or checks for pytest /
     unittest in sys.modules. Code that inspects whether it is under test runs
     a different path under test than in production.
-    Files that are themselves test infrastructure (pytest plugins, noxfile,
-    setup.py) are excluded from (b)."""
+    Files that are themselves test infrastructure are excluded from (b):
+    pytest plugins, files importing pytest (production code does not import
+    its test runner), pytest's own package, noxfile.py, setup.py, tasks.py."""
     r = _base("EC-SPECIAL-CASED", pm, pm.test_paths + pm.impl_paths)
     test_lits: set = set()
     for pf in pm.tests():
@@ -710,7 +728,12 @@ def ec_special_cased(pm: PyModel, ctx) -> CheckResult:
     )
     candidates = 0
     for pf in pm.impls():
-        infra = pf.path.split("/")[-1] in ("noxfile.py", "setup.py", "conftest.py", "tasks.py") or _defines_pytest_hooks(pf)
+        infra = (
+            pf.path.split("/")[-1] in ("noxfile.py", "setup.py", "conftest.py", "tasks.py")
+            or _defines_pytest_hooks(pf)
+            or any(v.split(".")[0] in ("pytest", "_pytest") for v in pf.imports.values())
+            or any(part in ("_pytest", "pytest") for part in pf.path.split("/")[:-1])
+        )
         for n in ast.walk(pf.tree):
             if not infra:
                 why = _test_context_probe(n, pf.imports)
@@ -785,6 +808,10 @@ def _compared_param_literals(test, params) -> list:
 PSEUDO_MOCK_ASSERTS = frozenset({"called_once_with", "called_with", "called_once", "has_calls", "any_call", "not_called", "has_been_called", "called_once_with_args"})
 
 
+def _falsy_const(t) -> bool:
+    return isinstance(t, ast.Constant) and not bool(t.value)
+
+
 def _dump(n) -> str:
     return ast.dump(n, annotate_fields=False)
 
@@ -817,15 +844,19 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
     here): each pattern below is a construct that looks like an assertion
     and is not one.
       constant      `assert True`, `assert "msg"`, `assert (x, "msg")`
-      tautology     `assert x == x`, `assertEqual(x, x)` (no calls in x)
+      tautology     `assert x is x`, `assertIs(x, x)` (no calls in x). `x == x`
+                    is NOT reported: it invokes __eq__ and can fail (NaN,
+                    broken __eq__), and tests of reflexivity use it.
       or-true       `assert <expr> or True`
       misused-msg   `assertTrue(a, b)` with a non-string constant b
       pseudo-mock   `assert m.called_once_with(...)` — auto-created Mock
                     attribute, always truthy; bare `m.assert_called` without ()
       swallowed     assertion inside try whose handler catches
                     AssertionError/Exception and does not re-raise or fail
+                    (`assert False` used to raise on purpose is excluded)
       unreachable   assertion after a bare call statement inside a
-                    `pytest.raises` / `assertRaises` block"""
+                    `pytest.raises` / `assertRaises` block (`assert False`
+                    used as a should-have-raised guard is excluded)"""
     r = _base("EC-ASSERTION-NONSTANDARD", pm, pm.test_paths)
     asserts = 0
     for pf in pm.tests():
@@ -837,22 +868,23 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                     r.findings.append(_loc(pf, n, "assert on a truthy constant cannot fail", pattern="constant"))
                 elif isinstance(t, ast.Tuple) and t.elts:
                     r.findings.append(_loc(pf, n, "assert on a non-empty tuple cannot fail", pattern="constant"))
-                elif isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], (ast.Eq, ast.Is, ast.LtE, ast.GtE)) and _dump(t.left) == _dump(t.comparators[0]) and not _has_call(t.left):
-                    r.findings.append(_loc(pf, n, "assert compares an expression with itself", pattern="tautology"))
+                elif isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Is) and _dump(t.left) == _dump(t.comparators[0]) and not _has_call(t.left):
+                    r.findings.append(_loc(pf, n, "assert tests an expression's identity with itself", pattern="tautology"))
                 elif isinstance(t, ast.BoolOp) and isinstance(t.op, ast.Or) and any(isinstance(v, ast.Constant) and bool(v.value) for v in t.values):
                     r.findings.append(_loc(pf, n, "assert '... or <truthy constant>' cannot fail", pattern="or-true"))
                 elif isinstance(t, ast.Call) and isinstance(t.func, ast.Attribute) and t.func.attr in PSEUDO_MOCK_ASSERTS:
                     r.findings.append(_loc(pf, n, f"assert on .{t.func.attr}(): an auto-created Mock attribute, always truthy", pattern="pseudo-mock"))
             elif isinstance(n, ast.Call):
                 name = call_name(n)
-                if name in ("assertEqual", "assertEquals", "assertIs", "assert_equal") and len(n.args) >= 2 and _dump(n.args[0]) == _dump(n.args[1]) and not _has_call(n.args[0]):
+                if name == "assertIs" and len(n.args) >= 2 and _dump(n.args[0]) == _dump(n.args[1]) and not _has_call(n.args[0]):
                     r.findings.append(_loc(pf, n, f"{name} compares an expression with itself", pattern="tautology"))
                 if name in ("assertTrue", "assertFalse") and len(n.args) == 2 and isinstance(n.args[1], ast.Constant) and not isinstance(n.args[1].value, str):
                     r.findings.append(_loc(pf, n, f"{name}(a, b): b is the failure message, not a comparand", pattern="misused-msg"))
             elif isinstance(n, ast.Expr) and isinstance(n.value, ast.Attribute) and n.value.attr.startswith("assert_"):
                 r.findings.append(_loc(pf, n, f"`.{n.value.attr}` is referenced but never called", pattern="pseudo-mock"))
             elif isinstance(n, ast.Try):
-                if any(is_assertion(x) for s in n.body for x in ast.walk(s)) and any(_handler_swallows(h) for h in n.handlers):
+                real = any(is_assertion(x) and not (isinstance(x, ast.Assert) and _falsy_const(x.test)) for s in n.body for x in ast.walk(s))
+                if real and any(_handler_swallows(h) for h in n.handlers):
                     r.findings.append(_loc(pf, n, "assertion inside try whose handler swallows the failure", pattern="swallowed"))
             elif isinstance(n, (ast.With, ast.AsyncWith)):
                 for item in n.items:
@@ -863,7 +895,7 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                             continue
                         seen_bare_call = False
                         for stmt in n.body:
-                            if seen_bare_call and any(isinstance(x, ast.Assert) for x in ast.walk(stmt)):
+                            if seen_bare_call and any(isinstance(x, ast.Assert) and not _falsy_const(x.test) for x in ast.walk(stmt)):
                                 r.findings.append(_loc(pf, stmt, "assertion after a bare call in a raises-block is unreachable when that call raises as expected", pattern="unreachable"))
                                 break
                             if isinstance(stmt, ast.Expr) and isinstance(stmt.value, (ast.Call, ast.Await)):

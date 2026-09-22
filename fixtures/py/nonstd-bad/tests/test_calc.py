@@ -17,7 +17,7 @@ def test_tuple():
 
 def test_tautology():
     x = add(2, 3)
-    assert x == x
+    assert x is x
 
 
 def test_or_true():
@@ -39,9 +39,9 @@ def test_swallowed():
 
 
 def test_unreachable():
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError) as exc:
         add(1, None)
-        assert False, "never runs"
+        assert "unsupported" in str(exc.value)
 
 
 class TestCalc(unittest.TestCase):

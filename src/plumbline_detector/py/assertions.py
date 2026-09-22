@@ -10,6 +10,21 @@ from .common import PyModel, call_name, dotted
 
 RAISES_CONTEXTS = frozenset({"raises", "warns", "deprecated_call", "assertRaises", "assertRaisesRegex", "assertWarns", "assertWarnsRegex", "assertLogs", "assertNoLogs"})
 FAIL_CALLS = frozenset({"fail"})
+# Library methods that raise on mismatch without an assert* name.
+# pytest's LineMatcher (pytester/testdir result.stdout / stderr); pexpect's
+# spawn.expect / expect_exact (raise on timeout or EOF).
+LIBRARY_ASSERTION_METHODS = frozenset(
+    {
+        "fnmatch_lines",
+        "re_match_lines",
+        "no_fnmatch_line",
+        "no_re_match_line",
+        "fnmatch_lines_random",
+        "re_match_lines_random",
+        "expect",
+        "expect_exact",
+    }
+)
 
 
 def _is_assert_call(call: ast.Call, helpers: frozenset[str]) -> bool:
@@ -18,7 +33,7 @@ def _is_assert_call(call: ast.Call, helpers: frozenset[str]) -> bool:
         return False
     if name.lower().startswith("assert"):
         return True
-    if name in RAISES_CONTEXTS:
+    if name in RAISES_CONTEXTS or name in LIBRARY_ASSERTION_METHODS:
         return True
     if name in FAIL_CALLS:
         d = dotted(call.func) or ""

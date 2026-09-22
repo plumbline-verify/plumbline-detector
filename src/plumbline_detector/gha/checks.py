@@ -98,7 +98,7 @@ def gt_skip_satisfies(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
         return r
     for key in sorted(produced):
         job = _job(gm, key)
-        if M.is_skippable_if(job.if_expr):
+        if M.is_skippable_if(job.if_expr, job.triggers):
             r.findings.append(
                 Location(
                     job.workflow,
@@ -190,7 +190,7 @@ def gt_aggregator_permissive(gm: M.GHAModel, gate: M.GateInfo) -> CheckResult:
             r.absent_reason = "no aggregator/summary job in any pull-request-triggered workflow"
         return r
     for job in aggs:
-        if not M.runs_always(job):
+        if not M.runs_always(job, job.triggers):
             why = "has no `if:`" if job.if_expr is None else f"has `if: {job.if_expr}`"
             r.findings.append(
                 Location(
@@ -236,7 +236,7 @@ def _propagates(gm, wf, job_id, required_keys, memo, stack):
     for dep in wf.jobs.values():
         if job_id not in dep.needs:
             continue
-        if not M.runs_always(dep):
+        if not M.runs_always(dep, dep.triggers):
             # dependent is skipped when this job fails -> reports Success
             continue
         kind, covered = M.verification(dep)

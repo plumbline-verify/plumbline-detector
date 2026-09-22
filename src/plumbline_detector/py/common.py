@@ -10,6 +10,12 @@ from pathlib import PurePosixPath
 from ..model import Location
 
 TEST_DIR_NAMES = frozenset({"tests", "test"})
+# Directories that conventionally hold inputs for tests (lint fixtures,
+# example scripts, snapshots), not test code. A .py file there is classified
+# as data only if its directory is not a package (no __init__.py) and it is
+# not itself collectable (conftest.py, test_*.py, *_test.py). Data files are
+# counted, not analyzed.
+DATA_DIR_NAMES = frozenset({"fixtures", "resources", "testdata", "test_data", "example_scripts", "snapshots"})
 
 
 def is_python(path: str) -> bool:
@@ -27,6 +33,20 @@ def is_test_path(path: str) -> bool:
     if name.startswith("test_") or name.endswith("_test.py") or name in ("conftest.py", "tests.py"):
         return True
     return any(part in TEST_DIR_NAMES for part in pp.parts[:-1])
+
+
+def is_collectable_name(path: str) -> bool:
+    name = PurePosixPath(path).name
+    return name.startswith("test_") or name.endswith("_test.py") or name in ("conftest.py", "tests.py")
+
+
+def is_data_path(path: str, all_paths) -> bool:
+    pp = PurePosixPath(path)
+    if pp.suffix != ".py" or is_collectable_name(path):
+        return False
+    if not any(part in DATA_DIR_NAMES for part in pp.parts[:-1]):
+        return False
+    return str(pp.parent / "__init__.py") not in all_paths
 
 
 def in_test_dir(path: str) -> bool:
@@ -48,6 +68,7 @@ class PyModel:
     issues: list[Location] = field(default_factory=list)  # (path, reason)
     test_paths: list[str] = field(default_factory=list)
     impl_paths: list[str] = field(default_factory=list)
+    data_paths: list[str] = field(default_factory=list)
 
     def tests(self):
         return [self.files[p] for p in self.test_paths if p in self.files]
@@ -79,8 +100,12 @@ def _collect_imports(tree: ast.Module) -> dict[str, str]:
 
 def build(snap) -> PyModel:
     m = PyModel()
+    everything = set(snap.all_paths())
     for p in snap.all_paths():
         if not is_python(p):
+            continue
+        if is_data_path(p, everything):
+            m.data_paths.append(p)
             continue
         (m.test_paths if is_test_path(p) else m.impl_paths).append(p)
         if p in snap.unread:
@@ -152,11 +177,23 @@ def is_main_guard(node) -> bool:
     )
 
 
+def is_fixture(func) -> bool:
+    for d in func.decorator_list:
+        target = d.func if isinstance(d, ast.Call) else d
+        if (dotted(target) or "").split(".")[-1] in ("fixture", "yield_fixture"):
+            return True
+    return False
+
+
 def iter_test_functions(pf: PyFile):
-    """Yield (func_node, class_node_or_None) for pytest/unittest test functions."""
+    """Yield (func_node, class_node_or_None) for pytest/unittest test functions.
+    conftest.py is not a test module, and @fixture functions are not tests."""
+    if PurePosixPath(pf.path).name == "conftest.py":
+        return
     for node in pf.tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test"):
-            yield node, None
+            if not is_fixture(node):
+                yield node, None
         elif isinstance(node, ast.ClassDef):
             bases = [dotted(b) or "" for b in node.bases]
             is_unittest = any(b.split(".")[-1].endswith("TestCase") for b in bases)
@@ -164,7 +201,7 @@ def iter_test_functions(pf: PyFile):
             if not (is_unittest or is_pytest_cls):
                 continue
             for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("test"):
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("test") and not is_fixture(item):
                     yield item, node
 
 
