@@ -21,9 +21,12 @@ repository-name columns are never loaded. Results are published only as
 aggregates with at least 5 PRs per cell. Items sent to labelers carry the
 file path and patch only.
 
-**Detector.** `tools/patch_scan.py` at the commit that adds this protocol
-(rules and definitions in its docstring). No rule changes between the
-first run and the reported numbers.
+**Detector.** `tools/patch_scan.py` (rules and definitions in its
+docstring) at the commit that adds `tools/aidev_scan.py`. One pre-run
+correction was made after smoke tests on synthetic patches and before any
+AIDev data was read: the success-exit rule no longer matches method calls
+(`server.exit()`) or text inside comments and strings. No rule changes
+between the first run and the reported numbers.
 
 **Unit.** A PR is flagged for a rule if any file patch in any of its
 commits triggers the rule. (Limitation: a later commit in the same PR that

@@ -41,8 +41,26 @@ SKIP_RE = re.compile(
     r"\b(it|test|describe|context)\.(skip|todo|only)\b|\b(xit|xdescribe|xtest|fit|fdescribe)\(|\bt\.Skip(f|Now)?\(|#\[ignore\]|@(Disabled|Ignore)\b"
 )
 TEST_CMD_RE = re.compile(r"\b(pytest|py\.test|tox|nox|npm (run )?test|yarn test|pnpm test|jest|vitest|mocha|go test|cargo test|mvn test|gradle test|make test|unittest)\b")
-EXIT_RE = re.compile(r"\b(sys\.exit|os\._exit|process\.exit|exit|quit)\(\s*(0)?\s*\)")
+EXIT_RE = re.compile(r"(?<![\w.])(sys\.exit|os\._exit|process\.exit|exit|quit)\(\s*(0)?\s*\)")
 RUNNER_RE = re.compile(r"\b(rep|report)\.outcome\s*=|\bforce_result\(|\bTestReport\.\w+\s*=|\bpytest_runtest_makereport\b.*\n?.*outcome|\bwasSuccessful\s*=")
+
+
+def _code_part(line: str) -> str:
+    """The line without a trailing # or // comment (outside quotes)."""
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"`":
+            quote = ch
+        elif ch == "#" or line.startswith("//", i):
+            return line[:i]
+    return line
+
+
+def _in_string(line: str, pos: int) -> bool:
+    return any(line[:pos].count(q) % 2 for q in "'\"`")
 
 
 def _lines(patch: str):
@@ -81,8 +99,9 @@ def scan_file(filename: str, status: str, patch: str | None) -> list[tuple[str, 
         if fresh:
             out.append(("P-SKIP-ADDED", fresh[0][:120]))
         for l in added:
-            m = EXIT_RE.search(l)
-            if m and (m.group(2) == "0" or m.group(1) in ("exit", "quit", "sys.exit", "process.exit")) and "__main__" not in l:
+            code = _code_part(l)
+            m = EXIT_RE.search(code)
+            if m and not _in_string(code, m.start()) and "__main__" not in l:
                 out.append(("P-EXIT-ZERO", l.strip()[:120]))
                 break
         joined = "\n".join(added)
