@@ -131,3 +131,32 @@ test-step removal once the latter is made precise.
 
 Labels without patches or file paths: `docs/agent_pr_study/labeled_sample.jsonl`.
 Full per-rule prevalence: `docs/agent_pr_study/prevalence_all_rules.md`.
+
+## PR-level precision audit (added after review; fixed before sampling)
+
+**Why.** The per-rule precision above was measured on file patches, 30 per
+rule. The headline counts PRs with at least one signal from any qualifying
+rule. A reviewer asked for precision measured directly at that level, on
+the population the headline describes.
+
+**Sample.** 200 PRs drawn uniformly (seed 20260928) from the 8,809 merged
+PRs with at least one qualifying signal. For each PR, labelers see every
+qualifying flagged patch in it: up to 5, each cut to 8,000 characters. They
+do not see the agent.
+
+**Labels.** Per PR:
+- **TP** if at least one qualifying signal is real (the patch does what the
+  rule says); otherwise **FP**.
+- For each TP, **weakening** is true, false, or null (unclear), under the
+  earlier definitions.
+
+The author audits a seeded 20% (seed 20260929).
+
+**Reporting, fixed now.**
+- Headline: PR-level precision with a 95% Wilson interval.
+- Precision-adjusted signal rate: 6.87% × PR-level precision, with the
+  interval propagated from the precision bounds.
+- PR-level weakening share, and the implied weakening rate among merged
+  agent PRs.
+- If PR-level precision is below 80%, the published signal rate becomes a
+  range bounded by the precision interval, and the paper says so.
