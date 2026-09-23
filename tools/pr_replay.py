@@ -43,9 +43,17 @@ def replay(args):
                 rows.append({"repo": name, "commit": c, "skipped": "parent not fetched"})
                 continue
             b, h = os.path.join(tmp, p), os.path.join(tmp, c)
-            for rev, d in ((p, b), (c, h)):
-                if not os.path.isdir(d):
-                    materialize(repo, rev, d)
+            try:
+                for rev, d in ((p, b), (c, h)):
+                    if not os.path.isdir(d):
+                        materialize(repo, rev, d)
+            except subprocess.CalledProcessError:
+                # a tree that cannot be extracted (paths the filesystem
+                # rejects) is reported, never dropped
+                rows.append({"repo": name, "commit": c, "skipped": "tree not extractable"})
+                shutil.rmtree(b, ignore_errors=True)
+                shutil.rmtree(h, ignore_errors=True)
+                continue
             try:
                 rec = pr.compare(b, h)
             except Exception as e:  # reported, never silently dropped

@@ -209,3 +209,15 @@ By the rule fixed above, **PR mode stays advisory**. Default-on needs:
 1. §2, precision of the new checks in round 3;
 2. §3, fresh recall of at least 50% on ImpossibleBench under a protocol
    committed before any transcript is read.
+
+## Harness correction (round 3, before any result was read)
+
+The first round-3 replay was stopped before completion, and none of its
+output was read. The replay tool (`tools/pr_replay.py`, harness only, no
+check code) did not catch a failure to extract a revision's tree. One
+repository has paths the filesystem rejects, and that failure would have
+aborted the whole run. Such a commit is now recorded as skipped ("tree not
+extractable") and counted in coverage. The replay was restarted from the
+beginning with fewer parallel workers, so it would not share memory with
+the matched-study extraction. The draw, the clones and the detector are
+unchanged.

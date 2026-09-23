@@ -157,3 +157,8 @@ changes and 100 flagged human changes, seed 20260931, with an author
 audit at seed 20260932. The result is final only after it. If precision
 differs between the groups by more than 10 points, the adjusted ratio is
 added.
+
+**Harness note (precision relabel).** The first extraction was killed
+before writing any output: one worker ran out of memory while another job
+shared the machine. It was re-run unchanged, with fewer workers and
+nothing running alongside. No packet or label existed before the re-run.
