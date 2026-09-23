@@ -105,6 +105,15 @@ detector never does.
   configuration.** Files the pytest configuration collects (`python_files`)
   are treated as tests; test helpers outside `tests/`/`test/` directories that
   no configuration collects are treated as implementation code.
+- **Benchmarks are exempt from EC-NO-ASSERTION.** A test taking the
+  `benchmark` fixture is assumed to measure speed. A correctness test that
+  also takes the fixture and forgot its assertion is not reported.
+- **The out-of-scope exemption trusts the invocation model.** Tests in a
+  separate top-level tree that no resolved invocation collects are judged
+  only by EC-TESTS-NOT-RUN (as UNKNOWN). If CI runs that tree through a
+  command the model does not read (a custom runner script in another
+  language, a matrix-built command line), its defects go unreported by the
+  other checks.
 - **Test-data classification can hide code.** A test-path file that pytest
   does not collect, that no test code imports statically, and whose name is
   not test-like is treated as data. Code loaded dynamically (`importlib`,
@@ -208,10 +217,20 @@ detector never does.
 
 ## JavaScript / TypeScript
 
-- **Newer than first.** The JS/TS checks were built after the Python ones
-  and tuned on five repositories (express, vue core, axios, chalk, vite).
-  Their precision on unseen code is unmeasured until a study round
-  includes them.
+- **Newer than first.** The JS/TS checks were built after the Python ones,
+  tuned on five repositories, and first measured in round 3 (ten
+  repositories): 98% for EC-ASSERTION-NONSTANDARD-JS, 38% and 28% for
+  EC-NO-ASSERTION-JS and EC-TESTS-NOT-RUN-JS before the schema 1.4.0 fixes.
+- **Assertions are credited by name.** Any call named `assert…`/`expect…`
+  followed by a capital counts, whatever it does. A helper so named that
+  asserts nothing hides a test with no assertion (false negative).
+- **Type-level assertions are credited only where vitest type-checks.**
+  Detection reads `typecheck` in vitest/vite config text with a pattern and
+  `--typecheck` in package scripts; a config that enables it indirectly
+  (a spread, a variable, an environment switch) is missed, and those tests'
+  `@ts-expect-error` assertions are not counted (false positive). A config
+  matched by the pattern but not used by CI credits assertions that never
+  run (false negative).
 - **Grammar coverage.** tree-sitter's TypeScript grammar at the pinned
   version rejects some valid TypeScript (for example `typeof import('./x')`
   in a type position). Such a file is a parse failure and makes the JS
@@ -251,7 +270,10 @@ detector never does.
 
 ## Measured precision in the output
 
-Each check carries its most recent measurement from the precision study. That
+Each check carries its most recent measurement from the precision study,
+and a `grade` derived from it (verdict, advisory, experimental). A grade
+computed from a measurement of earlier check code (`same_ruleset: false`)
+describes that code, not the code running now. That
 number describes that check's findings on twenty open-source Python
 projects at one point in time, as judged by review agents under a fixed
 rubric; it is not a guarantee for any other codebase. When `same_ruleset` is
@@ -262,12 +284,16 @@ not high.
 
 ## Calibration
 
-Precision has been measured, recall has not. Two pre-registered rounds of
-twenty held-out repositories each (docs/PRECISION_STUDY.md) put overall
-precision at about 55%, with wide per-check differences. Those rounds used
+Precision has been measured, recall has not. Three pre-registered rounds
+(20, 20 and 30 held-out repositories; docs/PRECISION_STUDY.md) put overall
+precision at 57%, 55% and 50%, with wide per-check differences. Schema 1.4.0's
+fixes are aimed at round 3's causes; whether they raise precision on unseen
+code is for round 4 to say, not for the round-3 regression figures. Those rounds used
 open-source Python projects that are presumed not to contain deliberate
 tampering, so they say nothing about how many real defects, or how many
-adversarial ones, the detector misses. Phase B (Auditing Sabotage Bench) is
-the first planned recall measurement; expect it to be sobering, since
-sabotaged evaluation code in ML repositories mostly corrupts *what is
-computed*, which is the outcome gap this detector does not address.
+adversarial ones, the detector misses. Phase B (Auditing Sabotage Bench,
+docs/PHASE_B.md) came out as predicted: AUROC 0.52, with sabotaged and
+honest variants receiving identical records. Its sabotages corrupt *what is
+computed*, the outcome gap this detector does not address. Recall on
+evidence-channel tampering still needs a benchmark whose sabotage targets
+tests and gates.

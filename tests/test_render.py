@@ -4,8 +4,8 @@ import subprocess
 import sys
 
 from plumbline_detector.cli import diff_main
-from plumbline_detector.record import analyze, dumps
-from plumbline_detector.render import to_markdown, to_sarif
+from plumbline_detector.record import analyze, dumps, grade
+from plumbline_detector.render import SARIF_LEVEL, to_markdown, to_sarif
 
 FIX = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
@@ -16,9 +16,26 @@ def test_sarif_structure_and_levels():
     run = sarif["runs"][0]
     assert sarif["version"] == "2.1.0"
     assert {r["id"] for r in run["tool"]["driver"]["rules"]} == {c["id"] for c in rec["checks"]}
-    errors = [r for r in run["results"] if r["level"] == "error"]
-    assert len(errors) == sum(len(c["findings"]) for c in rec["checks"])
-    assert all(r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in errors)
+    # every finding is a result whose level follows its check's grade
+    grades = {c["id"]: c["grade"] for c in rec["checks"]}
+    findings = [r for r in run["results"] if "partialFingerprints" in r]
+    assert len(findings) == sum(len(c["findings"]) for c in rec["checks"])
+    assert all(r["level"] == SARIF_LEVEL[grades[r["ruleId"]]] for r in findings)
+    assert all(r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in findings)
+
+
+def test_grade_policy():
+    def mp(tp, n):
+        from plumbline_detector.record import _wilson
+
+        return {"labeled": n, "precision": tp / n, "ci95": _wilson(tp, n)}
+
+    assert grade(None) == "experimental"
+    assert grade(mp(9, 9)) == "experimental"  # too few samples
+    assert grade(mp(39, 40)) == "verdict"
+    assert grade(mp(19, 19)) == "advisory"  # precise, but n < 20
+    assert grade(mp(30, 40)) == "advisory"
+    assert grade(mp(20, 40)) == "experimental"
 
 
 def test_sarif_reports_unknowns_as_notes():

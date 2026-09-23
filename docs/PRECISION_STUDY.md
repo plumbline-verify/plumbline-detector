@@ -399,3 +399,78 @@ Observation only: none of these was reported to the projects.
    which files a runner executes (example and demo directories), which
    helpers a framework provides (test-body wrappers, macros), and which
    checks happen at type-check time.
+
+## Precision targets (set after round 3, before round 4)
+
+A single pooled number hides what matters: whether a given finding can be
+acted on without review. Targets are therefore per check, and each check's
+grade in the output is computed from its latest measurement
+(`src/plumbline_detector/record.py`, `grade`):
+
+| Grade | Requirement (latest held-out round) | Meaning for a finding |
+|---|---|---|
+| verdict | n ≥ 20 labeled, precision ≥ 90%, 95% Wilson lower bound ≥ 80% | A confirmed defect often enough to act on without review. SARIF level `error`. |
+| advisory | n ≥ 10, precision ≥ 70% | Usually right; review each one. SARIF `warning`. |
+| experimental | anything else, including unmeasured | A lead. SARIF `note`. |
+
+Program targets for the next held-out round: pooled precision ≥ 80%, and
+every check that produced at least 20 findings at advisory grade or better.
+A check that misses the advisory bar in two consecutive rounds is
+redesigned or removed from the default operator set, not tuned again.
+
+## How the detector learns
+
+The detector does not change itself at run time. A run is a pure function of
+the snapshot and the versioned ruleset, and that property is what makes a
+record usable as evidence. Learning happens between versions, in a loop
+whose every step is recorded:
+
+1. **Measure** on repositories the current ruleset has never seen
+   (pre-registered sample, blind labels, author audit).
+2. **Cluster** the false positives by cause. Each cause becomes a rule
+   change plus a discrimination fixture that fails without the change.
+3. **Regress** on every earlier round's labels (`tools/regress_labels.py`).
+   A lost true positive blocks the change unless the scope definition itself
+   changed, which is then stated here and given to the next labelers.
+4. **Version**: the ruleset fingerprint changes, so the schema version bumps.
+5. **Recalibrate**: the next round's measurement replaces the old one in
+   `measurements.json`, and every check's `grade` follows from it. A check
+   earns or loses verdict grade on held-out evidence only, never on the
+   repositories that shaped it.
+
+## Round 3 follow-up (schema 1.4.0)
+
+Fixes for the round-3 false-positive classes, each with a discrimination
+fixture:
+
+- Python: out-of-scope trees (`example/`, `examples/`, `bench/` outside
+  every resolved invocation's scope) are not judged by the per-test quality
+  checks; benchmarks are exempt from EC-NO-ASSERTION; WebTest `status=`,
+  zope `verifyClass`/`verifyObject`, and `eq_`-family functions from testing
+  packages count as assertions; a constant `__eq__` on an abstract class is
+  UNKNOWN; `python -Im pytest`, `python -bb -m pytest`, `coverage run
+  [options] -m pytest`, shebang scripts and action `run:` inputs are read as
+  invocations.
+- GitHub Actions: workflows whose `pull_request` trigger lists only
+  non-code activity types (`labeled` …) are not PR-triggered for gate
+  inference.
+- JS/TS: call-produced test bodies, ava macros, tspl plans, `t.assert.*`,
+  assertion methods passed as arguments, `assert*`/`expect*`-named calls,
+  type-level assertions where vitest type-checks, and `.rejects` inside an
+  awaited `Promise.all`.
+
+**Scope decision (benchmarks).** Round-3 labelers split on benchmark
+functions without assertions: 10 labeled TP, 6 FP-scope. From schema 1.4.0
+EC-NO-ASSERTION is defined over correctness tests only; benchmarks are
+counted in `stats.benchmarks_excluded`. Round-4 labelers receive this
+definition. The 10 benchmark TPs appear as "lost" in the regression below
+by design.
+
+**Regression on rounds 1–3** (`tools/regress_labels.py`, schema 1.4.0; the
+same repositories at the same commits): 210 of 221 labeled true positives
+still reported, and all 11 no longer reported are benchmark functions (the
+scope decision above); 189 of 197 labeled false positives no longer
+reported (117 of 123 FP-detector, 72 of 74 FP-scope). These are the
+repositories the fixes were written against, so the figures show that the
+fixes do what they were meant to and break nothing labeled. They are **not**
+a precision estimate; only a fresh held-out round is.

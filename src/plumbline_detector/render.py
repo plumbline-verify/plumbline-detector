@@ -21,8 +21,13 @@ def _sarif_location(loc):
     return {"physicalLocation": phys}
 
 
+# Finding level follows the check's measured grade.
+SARIF_LEVEL = {"verdict": "error", "advisory": "warning", "experimental": "note"}
+
+
 def to_sarif(record: dict) -> str:
-    """Findings become results at level 'error'; UNKNOWN locations become
+    """Findings become results at a level set by the check's grade (verdict
+    'error', advisory 'warning', experimental 'note'); UNKNOWN locations become
     results at level 'note' so that abstentions are visible, not silent."""
     rules = []
     results = []
@@ -34,14 +39,14 @@ def to_sarif(record: dict) -> str:
                 "name": c["id"].replace("-", ""),
                 "shortDescription": {"text": title},
                 "fullDescription": {"text": prevents},
-                "properties": {"verdict": c["verdict"], "measured_precision": c["measured_precision"]},
+                "properties": {"verdict": c["verdict"], "grade": c["grade"], "measured_precision": c["measured_precision"]},
             }
         )
         for f in c["findings"]:
             results.append(
                 {
                     "ruleId": c["id"],
-                    "level": "error",
+                    "level": SARIF_LEVEL[c["grade"]],
                     "message": {"text": f["message"]},
                     "locations": [_sarif_location(f)],
                     "partialFingerprints": {"plumblineFinding/v1": f["id"]},
@@ -105,20 +110,22 @@ def to_markdown(record: dict) -> str:
         "It is not a certificate that the evidence is real. UNKNOWN means the check could not decide "
         "(nothing in scope, or something unreadable or unrecognized); it is never counted as a pass.",
         "",
-        "| Check | Verdict | Findings | Not evaluated | Measured precision | What it guards against |",
-        "|---|---|---|---|---|---|",
+        "| Check | Verdict | Grade | Findings | Not evaluated | Measured precision | What it guards against |",
+        "|---|---|---|---|---|---|---|",
     ]
     stale = False
     for c in record["checks"]:
         title, _ = CATALOG[c["id"]]
         basis = f" ({c['basis']})" if c.get("basis") not in (None, "declared") else ""
-        out.append(f"| `{c['id']}` | {c['verdict']}{basis} | {len(c['findings'])} | {len(c['unknowns'])} | {_precision_cell(c['measured_precision'])} | {title} |")
+        out.append(f"| `{c['id']}` | {c['verdict']}{basis} | {c['grade']} | {len(c['findings'])} | {len(c['unknowns'])} | {_precision_cell(c['measured_precision'])} | {title} |")
         stale = stale or bool(c["measured_precision"] and not c["measured_precision"]["same_ruleset"])
     out += [
         "",
         "Measured precision is the share of this check's findings that independent reviewers confirmed "
         "on repositories the detector had not been tuned on (docs/PRECISION_STUDY.md): "
-        "precision, 95% interval, and sample size."
+        "precision, 95% interval, and sample size. Grade follows from it: verdict (n≥20, precision ≥90%, "
+        "lower bound ≥80%) findings are confirmed defects often enough to act on; advisory (n≥10, precision ≥70%) "
+        "findings need review; experimental findings are leads."
         + (" Values marked * were measured on an earlier version of the check code." if stale else ""),
         "",
         f"Inventory: primary language {inv['primary_language'] or 'none'}, "

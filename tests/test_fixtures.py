@@ -129,6 +129,15 @@ CASES = [
     ("js/exit-bad", "EC-EXIT-BEFORE-ASSERT-JS", "FAIL", 1),
     ("js/good", "EC-RUNNER-PATCHED-JS", "PASS", 0),  # a real custom matcher computes pass
     ("js/runner-bad", "EC-RUNNER-PATCHED-JS", "FAIL", 2),  # always-pass matcher, reassigned it
+    # round-3 false-positive classes (schema 1.4.0)
+    ("py/noassert-discrim-r3", "EC-NO-ASSERTION", "FAIL", 1),  # benchmarks, webtest status=, verifyObject, eq_ credited; example/ out of scope
+    ("py/noassert-discrim-r3", "EC-ASSERTION-NONSTANDARD", "PASS", 0),  # `assert True` in an uncollected example project
+    ("py/noassert-discrim-r3", "EC-EQUALITY-OVERRIDE", "UNKNOWN", 0),  # constant __eq__ on an abstract base
+    ("py/noassert-discrim-r3", "EC-TESTS-NOT-RUN", "UNKNOWN", 0),  # the example tests stay visible, as UNKNOWN
+    ("gha/agg-discrim-labelonly", "GT-AGGREGATOR-PERMISSIVE", "UNKNOWN", 0),  # label-only PR trigger: not a gate
+    ("js/noassert-discrim-r3", "EC-NO-ASSERTION-JS", "FAIL", 1),  # call bodies, macros, tspl, t.assert, typecheck
+    ("js/noassert-discrim-r3", "EC-TESTS-NOT-RUN-JS", "PASS", 0),  # withRoot(...) body and ava macro are bodies
+    ("js/noassert-discrim-r3", "EC-ASSERTION-NONSTANDARD-JS", "PASS", 0),  # awaited through Promise.all
 ]
 
 JS = [c for c in CHECK_ORDER if c.endswith("-JS")]

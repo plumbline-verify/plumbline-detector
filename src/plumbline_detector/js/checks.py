@@ -53,19 +53,42 @@ def _root_identifier(node, src):
     return text(node, src) if node is not None and node.type == "identifier" else None
 
 
-def _is_assertion_call(call, src, helpers, t_param):
+ASSERT_NAME_RE = re.compile(r"^(assert|expect)[A-Z_]")
+
+
+def _is_assert_method_ref(node, src, roots) -> bool:
+    """`assert.equal` / `plan.equal` as a value (not called here)."""
+    if node.type != "member_expression":
+        return False
+    prop = text(node.child_by_field_name("property"), src)
+    return prop in ASSERT_METHODS and _root_identifier(node, src) in roots
+
+
+def _is_assertion_call(call, src, helpers, t_param, roots=frozenset()):
     fn = call.child_by_field_name("function")
     root = _root_identifier(fn, src)
-    if root in ASSERT_ROOTS or root in helpers:
+    if root in ASSERT_ROOTS or root in helpers or root in roots:
         return True
     args = call.child_by_field_name("arguments")
-    # an asserting function handed to a runner: runWith(checkOutput)
-    if args is not None and any(a.type == "identifier" and text(a, src) in helpers for a in args.named_children):
+    # an asserting function handed to a runner: runWith(checkOutput), or an
+    # assertion method passed to a checker: check(assert.equal, a, b)
+    if args is not None and any(
+        (a.type == "identifier" and text(a, src) in helpers) or _is_assert_method_ref(a, src, ASSERT_ROOTS | roots | {"t", t_param})
+        for a in args.named_children
+    ):
+        return True
+    # by name: assertEqual<A, B>(true), util.assertNever(x), expectType(...)
+    last = fn.child_by_field_name("property") if fn is not None and fn.type == "member_expression" else fn
+    if last is not None and last.type in ("identifier", "property_identifier") and ASSERT_NAME_RE.match(text(last, src)):
         return True
     if fn is not None and fn.type == "member_expression":
         prop = text(fn.child_by_field_name("property"), src)
         obj_root = root
-        if prop in ASSERT_METHODS and (obj_root in ("t", "assert", "sinon", "td", "cy", t_param) or prop == "should"):
+        if prop in ASSERT_METHODS and (obj_root in ("t", "assert", "sinon", "td", "cy", t_param) or obj_root in roots or prop == "should"):
+            return True
+        # node:test's t.assert.* (t.assert.ifError, t.assert.snapshot ...)
+        obj = fn.child_by_field_name("object")
+        if obj is not None and obj.type == "member_expression" and text(obj.child_by_field_name("property"), src) == "assert" and obj_root in ("t", t_param):
             return True
         # supertest / superagent chains: request(app).get("/").expect(200)
         if prop == "expect":
@@ -77,9 +100,35 @@ def _is_assertion_call(call, src, helpers, t_param):
     return False
 
 
-def _has_assertion(node, src, helpers, t_param=None) -> bool:
+def plan_roots(root, src) -> frozenset:
+    """Names bound to an assertion plan: `const plan = tspl(t, { plan: 2 })`
+    (@matteo.collina/tspl); `plan.equal(...)` asserts and `await plan`
+    fails when the count is not met."""
+    out = set()
+    for n in walk(root):
+        if n.type == "variable_declarator":
+            v = n.child_by_field_name("value")
+            nm = n.child_by_field_name("name")
+            if v is not None and v.type == "call_expression" and nm is not None and nm.type == "identifier":
+                if text(v.child_by_field_name("function"), src) == "tspl":
+                    out.add(text(nm, src))
+    return frozenset(out)
+
+
+def _type_assertion(n, src) -> bool:
+    """A type-level assertion that vitest --typecheck enforces:
+    `// @ts-expect-error`, `x satisfies T`, a generic call to an assert*/
+    expect* function (covered by name), `expectTypeOf`/`assertType`."""
+    if n.type == "comment" and "@ts-expect-error" in text(n, src):
+        return True
+    return n.type == "satisfies_expression"
+
+
+def _has_assertion(node, src, helpers, t_param=None, roots=frozenset(), typecheck=False) -> bool:
     for n in walk(node):
-        if n.type == "call_expression" and _is_assertion_call(n, src, helpers, t_param):
+        if n.type == "call_expression" and _is_assertion_call(n, src, helpers, t_param, roots):
+            return True
+        if typecheck and _type_assertion(n, src):
             return True
         # chai property assertions: expect(x).to.be.true ; x.should.exist
         if n.type == "member_expression" and text(n.child_by_field_name("property"), src) == "should":
@@ -115,6 +164,9 @@ def asserting_helpers(jm: JSModel) -> frozenset:
                 v = n.child_by_field_name("value")
                 if v is not None and v.type in ("arrow_function", "function_expression", "function"):
                     name, body = text(n.child_by_field_name("name"), jf.src), v
+                elif v is not None and v.type == "call_expression" and text(v.child_by_field_name("function"), jf.src).endswith(".macro"):
+                    # ava: const m = test.macro(async (t, ...) => {...})
+                    name, body = text(n.child_by_field_name("name"), jf.src), v
                 elif v is not None and v.type == "call_expression":
                     f = v.child_by_field_name("function")
                     if f is not None and f.type == "member_expression" and text(f.child_by_field_name("property"), jf.src) == "bind":
@@ -139,6 +191,16 @@ def asserting_helpers(jm: JSModel) -> frozenset:
     return frozenset(helpers)
 
 
+def _has_type_comment(tc, jf, typecheck) -> bool:
+    """tree-sitter attaches a comment just before the body's closing brace
+    to the body; a `@ts-expect-error` on the test's last line is still in
+    the test's byte range."""
+    if not typecheck:
+        return False
+    body = tc.call
+    return b"@ts-expect-error" in jf.src[body.start_byte:body.end_byte]
+
+
 def _base(check_id, jm):
     r = CheckResult(check_id)
     r.unknowns.extend(i for i in jm.issues if i.file in set(jm.candidate_paths))
@@ -156,6 +218,8 @@ def ec_js_no_assertion(jm: JSModel) -> CheckResult:
     helpers = asserting_helpers(jm)
     total = 0
     for jf in jm.tests():
+        roots = plan_roots(jf.root, jf.src)
+        typecheck = jm.typechecked(jf.path)
         for tc in jf.tests:
             if tc.body is None or {"skip", "todo"} & tc.modifiers:
                 continue
@@ -166,12 +230,19 @@ def ec_js_no_assertion(jm: JSModel) -> CheckResult:
                     continue
                 r.unknowns.append(Location(jf.path, tc.line, f"test {tc.name!r} runs function reference {ref!r} defined elsewhere; not evaluated"))
                 continue
-            if not _has_assertion(tc.body, jf.src, helpers, _first_param(tc.body, jf.src)):
+            t_param = _first_param(tc.body, jf.src) if tc.body.type != "call_expression" else None
+            if tc.body.type == "call_expression":
+                inner = [a for a in (tc.body.child_by_field_name("arguments").named_children if tc.body.child_by_field_name("arguments") else []) if a.type in ("arrow_function", "function_expression", "function")]
+                if not inner:
+                    r.unknowns.append(Location(jf.path, tc.line, f"test {tc.name!r} body is produced by a call; not evaluated"))
+                    continue
+                t_param = _first_param(inner[-1], jf.src)
+            if not _has_assertion(tc.body, jf.src, helpers, t_param, roots, typecheck) and not _has_type_comment(tc, jf, typecheck):
                 r.findings.append(Location(jf.path, tc.line, f"test {tc.name!r} contains no assertion the detector can see", {"test": tc.name}))
     r.had_input = total > 0 or bool(r.unknowns)
     if not r.had_input:
         r.absent_reason = NO_JS_TESTS
-    r.stats = {"test_cases": total}
+    r.stats = {"test_cases": total, "typechecked_files": sum(1 for jf in jm.tests() if jm.typechecked(jf.path))}
     return r
 
 
@@ -221,7 +292,7 @@ def _is_literal(node):
     )
 
 
-def _returned_or_awaited(node):
+def _returned_or_awaited(node, src):
     """Is this expression awaited, returned, or the arrow body itself?"""
     p = node.parent
     while p is not None and p.type in ("parenthesized_expression", "member_expression", "call_expression") and p.child_by_field_name("function") != node:
@@ -230,6 +301,11 @@ def _returned_or_awaited(node):
         node, p = p, p.parent
     if p is None:
         return False
+    # an element of `await Promise.all([...])`
+    if p.type == "array" and p.parent is not None and p.parent.type == "arguments":
+        call = p.parent.parent
+        if call is not None and call.type == "call_expression" and re.match(r"^Promise\.(all|allSettled|race|any)$", text(call.child_by_field_name("function"), src)):
+            return _returned_or_awaited(call, src)
     return p.type in ("await_expression", "return_statement", "arrow_function")
 
 
@@ -309,7 +385,7 @@ def ec_js_assertion_nonstandard(jm: JSModel) -> CheckResult:
                         r.findings.append(Location(jf.path, n.start_point[0] + 1, f"expect(<literal>).{prop}(<literal>) cannot fail", {"pattern": "constant"}))
                 # expect(p).resolves/rejects.toX() not awaited or returned
                 if prop.startswith("to") and obj is not None and obj.type == "member_expression" and text(obj.child_by_field_name("property"), src) in ("resolves", "rejects"):
-                    if _root_identifier(obj, src) == "expect" and not _returned_or_awaited(n):
+                    if _root_identifier(obj, src) == "expect" and not _returned_or_awaited(n, src):
                         r.findings.append(Location(jf.path, n.start_point[0] + 1, ".resolves/.rejects assertion is neither awaited nor returned: the test can finish before it runs", {"pattern": "unawaited"}))
             if text(fn, src) in ("assert", "assert.ok", "assert.isTrue", "assert.isOk") and "assert" not in local_defs:
                 args = n.child_by_field_name("arguments").named_children

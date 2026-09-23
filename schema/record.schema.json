@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "plumbline-detector/record/1.3.0",
+  "$id": "plumbline-detector/record/1.4.0",
   "title": "Plumbline detector record",
   "description": "One record per repository snapshot. schema_version changes whenever the record format or the semantics of any check change; provenance.ruleset_fingerprint identifies the exact check code.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "tool", "provenance", "repo", "inventory", "summary", "checks"],
   "properties": {
-    "schema_version": {"const": "1.3.0"},
+    "schema_version": {"const": "1.4.0"},
     "tool": {
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
       "properties": {"name": {"const": "plumbline-detector"}, "version": {"type": "string"}}
@@ -61,7 +61,7 @@
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "verdict", "reason", "findings", "unknowns", "stats", "measured_precision"],
+        "required": ["id", "verdict", "reason", "findings", "unknowns", "stats", "measured_precision", "grade"],
         "properties": {
           "id": {"type": "string"},
           "verdict": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
@@ -70,6 +70,7 @@
           "findings": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/location"}, {"required": ["id"]}]}},
           "unknowns": {"type": "array", "items": {"$ref": "#/$defs/location"}},
           "stats": {"type": "object"},
+          "grade": {"enum": ["verdict", "advisory", "experimental"], "description": "Trust level derived from measured_precision: verdict = n>=20, precision>=0.90 and 95% lower bound >=0.80; advisory = n>=10 and precision>=0.70; experimental otherwise (including unmeasured). The verdict field is unaffected; grade says how far to trust its findings without review."},
           "measured_precision": {
             "description": "Most recent held-out precision measurement of this check (docs/PRECISION_STUDY.md), or null if it has never produced a finding in a study round. same_ruleset is false when the measurement was made on different check code than the code that produced this record.",
             "oneOf": [

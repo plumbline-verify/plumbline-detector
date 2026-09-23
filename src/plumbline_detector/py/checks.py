@@ -60,6 +60,17 @@ def _not_run_keys(ctx) -> set:
     }
 
 
+def _judged_tests(pm: PyModel, ctx) -> list:
+    """Test files the per-test quality checks judge: all test files except
+    those whose every test lies outside the collection scope of every
+    resolved pytest invocation (example projects, benchmark suites run by a
+    separate command, demo scripts). EC-TESTS-NOT-RUN still reports those
+    tests, as UNKNOWN."""
+    coll = getattr(ctx, "collection", None)
+    oos = coll.out_of_scope_files() if coll is not None else set()
+    return [pf for pf in pm.tests() if pf.path not in oos]
+
+
 def asserting_fixtures(pm: PyModel, helpers) -> frozenset:
     """Names of pytest fixtures whose body (including closures they return)
     asserts: a test that uses the fixture as a callable asserts through it."""
@@ -89,6 +100,15 @@ def _asserts_in_code_string(func) -> bool:
     return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and _CODE_ASSERT_RE.search(n.value) for n in ast.walk(func))
 
 
+def _is_benchmark(func) -> bool:
+    """A pytest-benchmark / CodSpeed benchmark: takes the `benchmark` fixture
+    or carries @pytest.mark.benchmark. It measures speed, not correctness, so
+    a missing assertion is not an evidence gap."""
+    if "benchmark" in _params(func) or "benchmark" in {a.arg for a in func.args.kwonlyargs}:
+        return True
+    return any((dotted(d.func if isinstance(d, ast.Call) else d) or "").endswith("mark.benchmark") for d in func.decorator_list)
+
+
 def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     """EC-NO-ASSERTION: a test function that contains no assertion of any
     kind. It passes whenever it does not raise, so it cannot detect a wrong
@@ -98,11 +118,14 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     helpers = asserting_helpers(pm)
     fixtures = asserting_fixtures(pm, helpers)
     not_run = _not_run_keys(ctx)
-    total = skipped = 0
-    for pf in pm.tests():
+    total = skipped = benchmarks = 0
+    for pf in _judged_tests(pm, ctx):
         for func, cls in iter_test_functions(pf):
             if is_skipped(func) or (pf.path, cls.name if cls else None, func.name) in not_run:
                 skipped += 1
+                continue
+            if _is_benchmark(func):
+                benchmarks += 1
                 continue
             total += 1
             if contains_assertion(func, helpers) or _uses_asserting_fixture(func, fixtures):
@@ -115,7 +138,7 @@ def ec_no_assertion(pm: PyModel, ctx) -> CheckResult:
     r.had_input = total > 0 or bool(r.unknowns)
     if not r.had_input:
         r.absent_reason = NO_TESTS if not pm.test_paths else "no test functions found in test files"
-    r.stats = {"test_functions": total, "not_run_tests_excluded": skipped, "without_assertion": len(r.findings)}
+    r.stats = {"test_functions": total, "not_run_tests_excluded": skipped, "benchmarks_excluded": benchmarks, "without_assertion": len(r.findings)}
     return r
 
 
@@ -258,7 +281,7 @@ def ec_exit_before_assert(pm: PyModel, ctx) -> CheckResult:
         pf.path for pf in pm.tests()
         if any(isinstance(n, ast.Call) and qualname(n.func, pf.imports) in ("os.fork", "os.forkpty") for n in ast.walk(pf.tree))
     }
-    for pf in pm.tests():
+    for pf in _judged_tests(pm, ctx):
         visit(pf, pf.tree, False, "direct")
     r.had_input = bool(pm.test_paths)
     if not r.had_input:
@@ -319,6 +342,16 @@ def _classify_eq(fn, dunder: str) -> str:
     return "constant" if literal else "ignores-other"
 
 
+def _is_abstract_class(cls: ast.ClassDef) -> bool:
+    """Declares an @abstractmethod: it cannot be instantiated, so no object
+    ever compares with its own __eq__ unless a subclass inherits it."""
+    for item in cls.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any((dotted(d) or "").split(".")[-1] in ("abstractmethod", "abstractproperty") for d in item.decorator_list):
+                return True
+    return False
+
+
 def ec_equality_override(pm: PyModel, ctx) -> CheckResult:
     """EC-EQUALITY-OVERRIDE: __eq__/__ne__ overridden so that equality no
     longer tests anything. [ANTH] AlwaysEqual; [IMPB] strategy 2.
@@ -330,6 +363,8 @@ def ec_equality_override(pm: PyModel, ctx) -> CheckResult:
     UNKNOWN: an __eq__/__ne__ in test code that does read the other operand
     (a comparison helper whose soundness cannot be judged statically), and
     assignments of __eq__ to something we cannot resolve.
+    UNKNOWN, not FAIL: a constant __eq__/__ne__ on an abstract class (one
+    declaring an @abstractmethod), whose instances are its subclasses'.
     Not reported: value-object __eq__ in implementation code that reads the
     other operand. That is ordinary Python and must not fire."""
     all_paths = pm.test_paths + pm.impl_paths
@@ -365,6 +400,10 @@ def ec_equality_override(pm: PyModel, ctx) -> CheckResult:
             if isinstance(node, ast.ClassDef):
                 for item in node.body:
                     if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in ("__eq__", "__ne__"):
+                        if _is_abstract_class(node) and _classify_eq(item, item.name) == "constant":
+                            seen += 1
+                            r.unknowns.append(_loc(pf, item, f"{node.name}.{item.name} returns a constant, but {node.name} is abstract: the effective comparison is its concrete subclasses'; not evaluated"))
+                            continue
                         judge(pf, item, item, node.name, item.name)
                     elif isinstance(item, ast.Assign):
                         for t in item.targets:
@@ -763,7 +802,7 @@ def ec_mock_only(pm: PyModel, ctx) -> CheckResult:
     helpers = asserting_helpers(pm)
     not_run = _not_run_keys(ctx)
     total = with_mocks = 0
-    for pf in pm.tests():
+    for pf in _judged_tests(pm, ctx):
         for func, cls in iter_test_functions(pf):
             if is_skipped(func) or (pf.path, cls.name if cls else None, func.name) in not_run:
                 continue
@@ -1042,7 +1081,7 @@ def ec_assertion_nonstandard(pm: PyModel, ctx) -> CheckResult:
                     used as a should-have-raised guard is excluded)"""
     r = _base("EC-ASSERTION-NONSTANDARD", pm, pm.test_paths)
     asserts = 0
-    for pf in pm.tests():
+    for pf in _judged_tests(pm, ctx):
         for n in ast.walk(pf.tree):
             if isinstance(n, ast.Assert):
                 asserts += 1

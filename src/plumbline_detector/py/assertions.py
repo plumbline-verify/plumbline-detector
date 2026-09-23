@@ -37,8 +37,50 @@ LIBRARY_ASSERTION_METHODS = frozenset(
         "re_match_lines_random",
         "expect",
         "expect_exact",
+        # zope.interface.verify: raise BrokenImplementation / Invalid
+        "verifyClass",
+        "verifyObject",
     }
 )
+# WebTest's TestApp request methods raise AppError when the response status
+# differs from `status=`: `app.get(url, status=404)` is an assertion.
+WEBTEST_METHODS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "post_json", "put_json", "patch_json", "delete_json", "request", "do_request"}
+)
+# Comparison functions exported by testing packages (nose.tools,
+# sqlalchemy.testing and the projects that re-export it). Credited only when
+# the name is imported from a module with a `testing` or `nose` component.
+EXTERNAL_ASSERTION_NAMES = frozenset(
+    {
+        "eq_", "ne_", "ok_", "is_", "is_not", "is_not_", "in_", "not_in", "not_in_",
+        "le_", "lt_", "ge_", "gt_", "is_true", "is_false", "is_none", "is_not_none",
+        "startswith_", "eq_ignore_whitespace", "eq_regex", "expect_raises", "expect_raises_message",
+        "expect_warnings", "expect_deprecated", "emits_warning",
+    }
+)
+
+
+def _webtest_status(call: ast.Call) -> bool:
+    f = call.func
+    if not (isinstance(f, ast.Attribute) and f.attr in WEBTEST_METHODS):
+        return False
+    for kw in call.keywords:
+        if kw.arg == "status":
+            v = kw.value
+            return not (isinstance(v, ast.Constant) and (v.value is None or v.value == "*"))
+    return False
+
+
+def external_assertion_imports(pm: PyModel) -> frozenset[str]:
+    """Local names bound to EXTERNAL_ASSERTION_NAMES imported from a testing
+    package, across test files."""
+    out = set()
+    for pf in pm.files.values():
+        for local, target in pf.imports.items():
+            parts = target.split(".")
+            if parts[-1] in EXTERNAL_ASSERTION_NAMES and ("testing" in parts[:-1] or "nose" in parts[:-1]):
+                out.add(local)
+    return frozenset(out)
 
 
 def _is_assert_call(call: ast.Call, helpers: frozenset[str]) -> bool:
@@ -48,6 +90,8 @@ def _is_assert_call(call: ast.Call, helpers: frozenset[str]) -> bool:
     if name.lower().startswith("assert"):
         return True
     if name in RAISES_CONTEXTS or name in LIBRARY_ASSERTION_METHODS:
+        return True
+    if _webtest_status(call):
         return True
     if name in FAIL_CALLS:
         d = dotted(call.func) or ""
@@ -121,7 +165,7 @@ def asserting_helpers(pm: PyModel) -> frozenset[str]:
                         for t in node.targets:
                             if isinstance(t, ast.Name):
                                 partials.setdefault(t.id, set()).add(target.split(".")[-1])
-    helpers: set[str] = set()
+    helpers: set[str] = set(external_assertion_imports(pm))
     changed = True
     while changed:
         changed = False

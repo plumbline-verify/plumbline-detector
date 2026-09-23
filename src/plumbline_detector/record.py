@@ -121,6 +121,29 @@ def measured_precision(check_id, measurements, fingerprint):
     return None
 
 
+# Grade policy (docs/PRECISION_STUDY.md, "Precision targets"). A check's
+# grade is derived from its most recent held-out measurement, so each study
+# round recalibrates which findings are verdicts and which are leads.
+VERDICT_MIN_PRECISION = 0.90
+VERDICT_MIN_CI_LOW = 0.80
+VERDICT_MIN_LABELED = 20
+ADVISORY_MIN_PRECISION = 0.70
+ADVISORY_MIN_LABELED = 10
+
+
+def grade(mp) -> str:
+    """'verdict': findings are confirmed defects often enough to act on
+    without review. 'advisory': usually right; review each finding.
+    'experimental': unmeasured, too few samples, or below the advisory bar."""
+    if mp is None or mp["labeled"] < ADVISORY_MIN_LABELED:
+        return "experimental"
+    if mp["labeled"] >= VERDICT_MIN_LABELED and mp["precision"] >= VERDICT_MIN_PRECISION and mp["ci95"][0] >= VERDICT_MIN_CI_LOW:
+        return "verdict"
+    if mp["precision"] >= ADVISORY_MIN_PRECISION:
+        return "advisory"
+    return "experimental"
+
+
 class Context:
     def __init__(self, snap, collection=None):
         self.snap = snap
@@ -171,6 +194,7 @@ def analyze(
         coll.data_items = len(coll.items) - len(keep)
         coll.items = [coll.items[i] for i in keep]
         coll.not_run = {remap[i]: v for i, v in coll.not_run.items() if i in remap}
+        coll.scope_excluded = {remap[i] for i in coll.scope_excluded if i in remap}
     ctx = Context(snap, coll)
     data_set = set(pm.data_paths)
     results = {}
@@ -197,6 +221,7 @@ def analyze(
     for c in CHECK_ORDER:
         entry = results[c].to_json()
         entry["measured_precision"] = measured_precision(c, measurements, fingerprint)
+        entry["grade"] = grade(entry["measured_precision"])
         checks.append(entry)
     summary = {v: sum(1 for c in checks if c["verdict"] == v) for v in ("PASS", "FAIL", "UNKNOWN")}
     return {

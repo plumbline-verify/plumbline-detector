@@ -88,6 +88,7 @@ class Step:
     texts: list[str]  # every string value in the step, for reference scans
     working_directory: str | None = None
     env: dict = field(default_factory=dict)  # name -> literal string value
+    with_inputs: dict = field(default_factory=dict)  # `with:` literal scalars
 
 
 @dataclass
@@ -168,13 +169,34 @@ def _scalar(value, what, path, issues):
     return None
 
 
+# pull_request activity types that run on new code
+CODE_PR_TYPES = frozenset({"opened", "synchronize", "reopened", "ready_for_review"})
+
+
+def _code_blind_types(v) -> bool:
+    """`types:` given and none of them delivers new code."""
+    if not isinstance(v, Y.YMap) or "types" not in v:
+        return False
+    t = v.get("types")
+    types = [str(t)] if isinstance(t, Y.YStr) else [str(x) for x in t] if isinstance(t, Y.YList) and all(isinstance(x, Y.YStr) for x in t) else None
+    return types is not None and not (set(types) & CODE_PR_TYPES)
+
+
 def _parse_triggers(on, path, issues) -> set[str]:
     if isinstance(on, Y.YStr):
         return {str(on)}
     if isinstance(on, Y.YList) and all(isinstance(x, Y.YStr) for x in on):
         return {str(x) for x in on}
     if isinstance(on, Y.YMap):
-        return set(on.keys())
+        out = set()
+        for k, v in on.items():
+            if k in ("pull_request", "pull_request_target") and _code_blind_types(v):
+                # fires only on label/assignment/edit events, never on a
+                # push to the PR: it cannot gate the code under review
+                out.add(f"{k}:non-code")
+            else:
+                out.add(k)
+        return out
     issues.append(Location(path, Y.line_of(on), "unrecognized 'on:' trigger shape"))
     return set()
 
@@ -199,6 +221,7 @@ def _parse_step(i, raw, path, issues) -> Step | None:
         texts=_strings(raw, []),
         working_directory=_opt_str(raw.get("working-directory")),
         env=_env(raw.get("env")),
+        with_inputs=_env(raw.get("with")),
     )
 
 

@@ -1,0 +1,16 @@
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [labeled]
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo agent
+  conclusion:
+    needs: [agent]
+    if: always() && needs.agent.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done

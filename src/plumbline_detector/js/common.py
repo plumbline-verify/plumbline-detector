@@ -36,6 +36,9 @@ _LANGS = {
     "tsx": Language(tree_sitter_typescript.language_tsx()),
 }
 
+TYPE_TEST_RE = re.compile(r"\.(test|spec)-d\.(ts|mts|cts|tsx)$")
+VITEST_CONFIG_RE = re.compile(r"^(vitest|vite)\.(config|workspace)\.(js|mjs|cjs|ts|mts|cts)$")
+TYPECHECK_ON_RE = re.compile(r"typecheck\s*:\s*(true\b|\{[^{}]*\benabled\s*:\s*true\b)")
 TEST_NAME_RE = re.compile(r"\.(test|spec|cy)\.(js|jsx|mjs|cjs|ts|mts|cts|tsx)$")
 DATA_DIRS = frozenset({"fixtures", "__fixtures__", "__mocks__", "__snapshots__", "node_modules"})
 TEST_DIRS = frozenset({"test", "tests", "__tests__"})
@@ -112,6 +115,15 @@ class JSModel:
     frameworks: dict = field(default_factory=dict)  # package.json dir -> set of frameworks
     package_scripts: dict = field(default_factory=dict)
     support: dict = field(default_factory=dict)  # helper-source files, not tests
+    typecheck_dirs: set = field(default_factory=set)  # vitest typecheck enabled at/below
+
+    def typechecked(self, path: str) -> bool:
+        """vitest runs this file's type-level assertions: a *.test-d.* file,
+        or a file under a directory whose vitest/vite config enables
+        typecheck or whose package scripts pass --typecheck."""
+        if TYPE_TEST_RE.search(posixpath.basename(path)):
+            return True
+        return any(d == "" or path.startswith(d + "/") for d in self.typecheck_dirs)
 
     def tests(self):
         return [f for f in self.files.values() if f.is_test]
@@ -174,8 +186,11 @@ def _function_arg(call):
     fns = [a for a in named if a.type in ("arrow_function", "function_expression", "function")]
     if fns:
         return fns[-1]
-    if len(named) >= 2 and named[-1].type in ("identifier", "member_expression"):
-        return named[-1]
+    # a function reference, an ava macro `test(title, macro, ...args)`, or a
+    # call that returns the test function `it(title, withSetup(async () => {}))`
+    for a in named[1:]:
+        if a.type in ("identifier", "member_expression", "call_expression"):
+            return a
     return None
 
 
@@ -283,6 +298,11 @@ def build(snap) -> JSModel:
                 continue
             m.frameworks[posixpath.dirname(p)] = fw
             m.package_scripts[posixpath.dirname(p)] = scripts
+            if any(re.search(r"\bvitest\b.*--typecheck\b", v) for v in scripts.values()):
+                m.typecheck_dirs.add(posixpath.dirname(p))
+        elif VITEST_CONFIG_RE.match(posixpath.basename(p)) and p in snap.files and "node_modules" not in p.split("/"):
+            if TYPECHECK_ON_RE.search(snap.files[p].decode("utf-8", "replace")):
+                m.typecheck_dirs.add(posixpath.dirname(p))
     for p in snap.all_paths():
         if not is_js(p):
             continue

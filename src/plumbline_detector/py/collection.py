@@ -58,6 +58,8 @@ MODELED_INI = {"addopts", "python_files", "python_classes", "python_functions", 
 NON_RUN_OPTS = {"--co", "--collect-only", "--setup-plan", "--fixtures", "--markers", "--version", "-h", "--help", "--fixtures-per-test"}
 WRAPPER_TOKENS = {"uv", "run", "poetry", "pdm", "hatch", "pipenv", "rye", "xvfb-run", "-a", "timeout", "sudo", "env", "time", "exec", "--", "-E", "--locked", "--frozen", "--no-sync", "--active"}
 PYTHON_RE = re.compile(r"^(.*/)?(python|python3|python3\.\d+|py|pypy3?)(\.exe)?$")
+PY_M_RE = re.compile(r"^-[BEIOPRSbdiqsuvx]*m$")
+PY_FLAG_RE = re.compile(r"^-[BEIOPRSbdiqsuvx]+$|^-[XW]$|^-[XW]\S+$")
 UNRESOLVED_RE = re.compile(r"\$|\{\{|\}\}|`|\{[^}]*\}")
 
 
@@ -433,6 +435,17 @@ def _split_commands(script: str):
                 yield part
 
 
+def _coverage_run(head) -> bool:
+    """`coverage run [options] -m pytest`: coverage's own options (with
+    their values) may sit between `run` and `-m`."""
+    for j in range(len(head) - 1):
+        if posixpath.basename(head[j]) == "coverage" and head[j + 1] == "run":
+            return all(PYTHON_RE.match(x) or x in WRAPPER_TOKENS for x in head[:j]) and (
+                j + 2 == len(head) or head[j + 2].startswith("-")
+            )
+    return False
+
+
 def _pytest_args(tokens):
     """If this simple command runs pytest, return the argument list."""
     toks = [t for t in tokens if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t)]
@@ -442,9 +455,15 @@ def _pytest_args(tokens):
             if all(x in WRAPPER_TOKENS or PYTHON_RE.match(x) for x in toks[:i]):
                 return toks[i + 1:]
             return None
-        if t == "-m" and i + 1 < len(toks) and toks[i + 1] == "pytest":
+        # `python -m pytest`, also with bundled or separate interpreter
+        # flags: `python -Im pytest`, `python -I -X dev -m pytest`
+        if PY_M_RE.match(t) and i + 1 < len(toks) and toks[i + 1] == "pytest":
             head = toks[:i]
-            if head and (PYTHON_RE.match(head[-1]) or head[-2:] == ["coverage", "run"] or head[-1] == "{envpython}"):
+            if t != "-m":
+                head = head + [t[:-1]]
+            while head and PY_FLAG_RE.match(head[-1]):
+                head = head[:-1]
+            if head and (PYTHON_RE.match(head[-1]) or head[-1] == "{envpython}" or _coverage_run(head)):
                 return toks[i + 2:]
             return None
     return None
@@ -474,6 +493,7 @@ def invocations_from_script(script, source, line, cwd, env_addopts=None):
         args = _pytest_args(toks)
         if args is None:
             continue
+        args = [a for a in args if a not in ("$@", "$*", "${@}", "${*}")]
         if any(a in NON_RUN_OPTS for a in args):
             continue
         extra = []
@@ -523,6 +543,15 @@ def _gha_invocations(gm):
                 cwd = _join("", wd)
                 env = {**wf.env, **job.env, **st.env}
                 out += invocations_from_script(st.run, wf.path, st.line, cwd, env.get("PYTEST_ADDOPTS"))
+            # actions that run a command they are given (CodSpeedHQ/action
+            # `run:`, retry wrappers' `command:`)
+            for st in job.steps:
+                if st.uses and not st.run:
+                    for key in ("run", "command"):
+                        if key in st.with_inputs:
+                            env = {**wf.env, **job.env, **st.env}
+                            wd = st.with_inputs.get("working-directory") or job.run_working_directory or wf.run_working_directory or "."
+                            out += invocations_from_script(st.with_inputs[key], wf.path, st.line, _join("", wd), env.get("PYTEST_ADDOPTS"))
     return out
 
 
@@ -654,18 +683,24 @@ def _nox_invocations(pm: PyModel):
     return out
 
 
+SHEBANG_RE = re.compile(rb"^#!\s*\S*(/|\s)(env\s+)?(ba|z|da)?sh\b")
+
+
 def _make_and_sh_invocations(snap):
     out = []
     for p in snap.paths():
         name = posixpath.basename(p)
-        if name not in ("Makefile", "makefile", "GNUmakefile") and not name.endswith(".sh"):
+        data = snap.files.get(p, b"")
+        # *.sh, or an extensionless script with a sh/bash shebang (scripts/test)
+        shell = name.endswith(".sh") or ("." not in name and SHEBANG_RE.match(data[:80]) is not None)
+        if name not in ("Makefile", "makefile", "GNUmakefile") and not shell:
             continue
         try:
-            text = snap.files[p].decode("utf-8")
+            text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
         d = posixpath.dirname(p)
-        if name.endswith(".sh"):
+        if shell:
             # shell scripts are assumed to run from the repository root
             out += invocations_from_script(text, p, None, "")
         else:
@@ -691,6 +726,31 @@ class Collection:
     collected_files: set
     resolved_invocations: int = 0
     data_items: int = 0  # test-looking functions in files reclassified as test data
+    # item indices that no resolved invocation's collection scope reaches
+    # (testpaths, norecursedirs, python_files, command-line paths)
+    scope_excluded: set = field(default_factory=set)
+
+    def out_of_scope_files(self) -> set:
+        """Files every one of whose tests lies outside the collection scope of
+        every resolved invocation. Empty unless pytest is the runner and at
+        least one invocation resolved. Tests in these files are reported by
+        EC-TESTS-NOT-RUN (UNKNOWN: they may be test data); the per-test
+        quality checks do not judge them."""
+        if not self.pytest_evidence or self.resolved_invocations == 0:
+            return set()
+        by_file: dict = {}
+        for i, it in enumerate(self.items):
+            by_file.setdefault(it.file, []).append(i in self.scope_excluded)
+        # Guard against an invocation the model missed: a file that shares a
+        # top-level directory with a collected test stays judged (celery's
+        # t/unit beside collected t/integration). Only separate trees
+        # (example/, examples/, bench/ beside tests/) are exempt.
+        tops = {_top(f) for f in self.collected_files}
+        return {f for f, flags in by_file.items() if all(flags) and _top(f) not in tops}
+
+
+def _top(path: str) -> str:
+    return path.split("/", 1)[0] if "/" in path else ""
 
 
 def _conftest_ignores(pm: PyModel, issues):
@@ -914,6 +974,7 @@ def build(snap, pm: PyModel, gm) -> Collection:
                     continue
             reasons[idx].append((why[0], why[1], inv))
     not_run = {}
+    scope_excluded = set()
     for idx in range(len(items)):
         if runs.get(idx):
             continue
@@ -931,10 +992,12 @@ def build(snap, pm: PyModel, gm) -> Collection:
                 best = ("scope", "file name does not match python_files", None)
             else:
                 best = ("scope", "no invocation collects it", None)
+        if best[0] == "scope":
+            scope_excluded.add(idx)
         if unresolved and best[0] != "skipped" and not (best[0] == "scope" and "python_files" in best[1]):
             best = ("unresolved", f"excluded by every resolved invocation ({best[1]}), but an unresolved invocation may run it", best[2])
         not_run[idx] = best
-    return Collection(configs, invs, items, runs, not_run, issues, pytest_evidence, collected_files, resolved)
+    return Collection(configs, invs, items, runs, not_run, issues, pytest_evidence, collected_files, resolved, scope_excluded=scope_excluded)
 
 
 def _pyarg_path(name, cwd, path_set):
