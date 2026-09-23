@@ -244,6 +244,22 @@ special-casing test inputs, among others).
 | `EC-SPECIAL-CASED` | (a) In implementation code: `if <parameter> == <literal>: return <literal>` in a function that also has a general return path, where the input literal is non-trivial, occurs in test files, and occurs nowhere else outside test files (not in other code, not in docs). (b) Implementation code that reads `PYTEST_CURRENT_TEST` or `PYTEST_VERSION` from the environment (`os.environ.get`, `os.getenv`, `os.environ[...]`, `in os.environ`), reads `sys._called_from_test` (attribute, `hasattr`, `getattr`), or checks for `pytest`/`unittest` in `sys.modules`. The same strings merely present in code (a linter's pattern table) do not count. Test infrastructure (files importing pytest, pytest plugins, noxfile, setup.py) is excluded from (b). | Code that returns the expected answer for the test's input only, or behaves differently under test than in production. |
 | `EC-ASSERTION-NONSTANDARD` | Assertions that cannot fail or cannot run: `assert <truthy constant>`, `assert (x, "msg")`, `assert x is x` with `x` a plain name, `assert … or True`, `assertTrue(a, <non-string constant>)`, `assert m.called_once_with(…)` (auto-created Mock attribute), bare `m.assert_called_once` without a call, an assertion inside `try` whose handler catches `AssertionError`/`Exception` and does nothing (only `pass`/`continue`/`break`) with no failing `else:`, and an assertion after a bare call inside a `pytest.raises`/`assertRaises` block with no explicit `raise` after it. Not reported: `x == x` and `x.attr is x.attr` (both can fail: `__eq__`, property caching). This is an operational definition; it does not reproduce the taxonomy of any cited study. | Assertions that look like verification but verify nothing. |
 
+## History scan (for technical diligence)
+
+`plumbline-scan run REPO --since 2025-09-23 --out DIR` scans every merged
+change in a period. Changes are the first-parent history of the
+checked-out branch. It uses the three diff rules that met the published
+precision bar, the PR-mode checks, and the repository checks at the
+head. It writes `scan.json`, `findings.jsonl` and `triage.csv`.
+
+An analyst marks each flagged change `weakening`, `benign`, `unclear`
+or `false-alarm`. Then `plumbline-scan report DIR --triage DIR/triage.csv
+--target "Target A" -o report.html` builds the client report. It lists
+only the confirmed weakening changes and counts the rest. The report
+command refuses an incomplete triage sheet.
+
+The scan runs locally and offline. It reads no author identities.
+
 ## PR mode
 
 `plumbline-pr BASE HEAD` (two snapshot directories), or `plumbline-pr

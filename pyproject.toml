@@ -18,6 +18,7 @@ test = ["pytest>=7", "jsonschema>=4"]
 plumbline-detect = "plumbline_detector.cli:main"
 plumbline-diff = "plumbline_detector.cli:diff_main"
 plumbline-pr = "plumbline_detector.cli:pr_main"
+plumbline-scan = "plumbline_detector.scan:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
