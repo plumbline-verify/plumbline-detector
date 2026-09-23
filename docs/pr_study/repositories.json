@@ -1,0 +1,21 @@
+{
+  "body-parser": "aa9889bc35ede269cbb8cc271e485cde0847776c",
+  "cookie": "51c485421a95ee796de6d8dab53a5ade0a20db8a",
+  "fastify-static": "a39a464728f3766e73272c22d2dd04fcf13f13e6",
+  "filesystem_spec": "9bfa1336d2e40d8de1a93ba87d2a8a1afe9b8944",
+  "h3": "b31898362a111c526271989682aef54b2a15077f",
+  "installer": "ba622422bc1c458d8cb82f08085a807cf2146d7a",
+  "mkdocs": "2862536793b3c67d9d83c33e0dd6d50a791928f8",
+  "ms": "4ff48cec099f0514c3e9bbca18706c9c21122bfb",
+  "multer": "35979e5afbb814bdb4b750ce028b125eb84c53af",
+  "pino-pretty": "0ebe244e63619f7ec5fd0abb9e89f5038cfd25dd",
+  "pydantic-extra-types": "e4170604010d7db3ed14b454461e915ac1c08a9c",
+  "pyjwt": "171062d2d734315272a901100aa4b109f2fc3c19",
+  "pyproject-api": "dc07ced7158ed08f77d7f5ea8ffe8e79f2119aac",
+  "python-multipart": "d9cb4c62db5b9defeeaa99bfe0e4da51e760108f",
+  "setuptools-scm": "5173a1eea5c3629b8e4d343ee3a022b8c8d211d0",
+  "stamina": "ae777564650fda1c6ec24c09d0e73db75eef6dd8",
+  "tomli": "5a77b12a7a9f052ce5a20c335d2825658f6aea52",
+  "unstorage": "0dfd172efbe8d4375ee749b7a528b174111f7881",
+  "wheel": "b25c3c2ef5c789116b0545889aea68f5f65185a7"
+}

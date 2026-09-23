@@ -54,3 +54,57 @@ history are skipped and counted.
 **What is not measured.** Recall: whether PR mode catches real agent
 tampering. That needs a benchmark of agent-authored weakening (see
 docs/PHASE_B.md, "What would measure this detector").
+
+## Results (detector `2be5f00`, schema 1.5.0)
+
+**Coverage.** 19 of 20 repositories; pallets/blinker could not be cloned
+(the host asked for credentials) and is reported missing, not replaced.
+570 changes replayed; none skipped, no errors. Commits are in
+`docs/pr_study/repositories.json`; every finding and its label is in
+`docs/pr_study/labeled_findings.jsonl`.
+
+**Alarm rate: 12 of 570 changes (2.1%).** Meets the pre-registered ceiling
+of 10%.
+
+**Factual precision: 9 of 14 findings (64%; 95% Wilson interval 39–84%).**
+Below the pre-registered 80% floor. **By the decision rule, PR mode is not
+shipped at schema 1.5.0**; the causes are reported and the design revisited.
+
+| Check | Findings | TP | FP |
+|---|---|---|---|
+| PR-TESTS-REMOVED | 7 | 5 | 2 |
+| PR-NEW-TAMPERING | 4 | 1 | 3 |
+| PR-ASSERTIONS-REMOVED | 2 | 2 | 0 |
+| PR-TESTS-DISABLED | 1 | 1 | 0 |
+
+**All nine true findings were benign**: tests removed with the feature
+they covered, an obsolete benchmark replaced by a stronger test, a test
+replaced by a pre-commit hook, an expected-failure branch removed because
+the parser gained support, `continue-on-error` added for a pre-release
+Python leg. On these twenty well-maintained, human-maintained
+repositories, PR mode found no change that weakened verification without
+a reason. That is a base rate worth knowing: the product's value depends
+on agent-authored changes, which this study did not include.
+
+**Causes of the five false positives.**
+1. *Pre-existing CI constructs re-reported (3, PR-NEW-TAMPERING).* A
+   conditional `continue-on-error` and an aggregator without `if:` were
+   already present; the change only added matrix legs or renamed a needed
+   job. "New" was decided by finding identifier, which includes the
+   message, and the message contains the leg count and the needs list.
+2. *Tests moved to a renamed class in another file (2, PR-TESTS-REMOVED).*
+   Re-added tests were matched by class-qualified name, so a move from a
+   module-level or differently named class was not recognized.
+
+Two TPs are overstated in their wording: a count of 30 removed tests where
+many were folded into `it.each` tables (some genuinely removed), and a
+"does not run" for an `xfail(run=False)` limited to Python below 3.9.
+
+**Audit.** The author checked the seeded 20% (PR#4, PR#11, PR#14) against
+the repositories' history and agrees with all three.
+
+**What changes next (to be measured on fresh repositories, not these):**
+decide "new" for tampering findings by construct identity (check, file,
+job or test), not by message; match removed tests to re-added ones by
+function name without the class and by body; report partial effects
+(matrix legs, Python versions) as partial.
