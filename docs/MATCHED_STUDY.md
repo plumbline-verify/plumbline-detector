@@ -124,6 +124,34 @@ comparison with humans. The matched result says that weakening is a
 property of changes in these repositories, whoever writes them. That
 argues for checking every change, not only agents' changes.
 
+**Precision relabel: procedure details.** These were fixed before any
+patch was extracted or labeled; the sample itself was drawn as
+pre-registered.
+
+- **Frame.** Flagged changes in the 262 repositories of the primary
+  analysis: 152 agent and 2,206 human.
+- **Identity.** A change is identified by its repository and by its
+  position counted from the oldest change in the window, so commits
+  pushed after the run cannot shift it. On re-extraction, a change counts
+  as reproduced only if its group, rules and line count all match the
+  run. Changes that do not reproduce are reported by group and are not
+  replaced.
+- **Packets.** Each packet carries the flagged file patches and the rule
+  names, capped at 300 lines per file. It carries no group, repository,
+  author or commit message. Items are shuffled with seed 20260932.
+- **Unit and label.** One item is one change:
+  - **TP** if at least one flagged file patch does what its rule says;
+  - **FP** otherwise.
+
+  Each TP is also judged **weakening**, **benign** or **unclear**, as in
+  docs/AGENT_PR_STUDY.md.
+- **Labelers and audit.** Independent reviewers, with packets split
+  evenly. The author audits a seeded 20% (seed 20260932).
+- **Adjustment.** If precision differs between the groups by more than 10
+  points, each group's flagged count is multiplied by its precision in
+  every stratum. The adjusted ratio is reported next to the unadjusted
+  one, and its interval is labeled approximate.
+
 **Still to run (pre-registered).** Precision relabel: 100 flagged agent
 changes and 100 flagged human changes, seed 20260931, with an author
 audit at seed 20260932. The result is final only after it. If precision
