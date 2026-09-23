@@ -151,7 +151,7 @@ lower bound of the interval, 79.6%, falls just short of the pre-registered
 80%, because fifteen findings are too few to establish it. **By the
 decision rule, PR mode ships as advisory**, not yet default-on. Reaching
 default-on needs more labeled findings at this precision (with no false
-positive, about 17 would move the lower bound above 80%); the next round
+positive, 16 would move the lower bound above 80%); the next round
 adds them.
 
 | Check | Findings | TP | Benign | Weakening |
