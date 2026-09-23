@@ -68,6 +68,7 @@ FINGERPRINT_MODULES = [
     "catalog.py",
     "render.py",
     "pr.py",
+    "loosen.py",
 ]
 
 

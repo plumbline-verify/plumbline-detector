@@ -249,13 +249,20 @@ special-casing test inputs, among others).
 `plumbline-pr BASE HEAD` (two snapshot directories), or `plumbline-pr
 REV1 REV2 --repo PATH` (two revisions of a local git repository), reports
 what one change did to its own verification. Exit status 1 when any check
-fails.
+fails. The loosening checks (tolerance through exclusions) are new in
+schema 1.7.0; their precision is unmeasured, so they grade as
+experimental until a study measures them.
 
 | ID | Detects |
 |---|---|
 | `PR-ASSERTIONS-REMOVED` | A test present and running on both sides has fewer recognized assertions after the change. |
 | `PR-TESTS-DISABLED` | A test that ran before the change is skipped, deselected, ignored or turned into a todo after it. |
 | `PR-TESTS-REMOVED` | Tests deleted from a file, or with their file, not re-added anywhere under the same name, when the file does not gain at least as many tests as it lost. |
+| `PR-TOLERANCE-LOOSENED` | In a test present and running on both sides, a numeric tolerance or threshold in an assertion moves in the looser direction: `rtol`/`atol`/`rel`/`abs`/`delta` raised, `places`/`decimal` lowered, `assert x < N` with N raised, `toBeLessThan(N)` raised, `toBeCloseTo` digits lowered. Values are compared in order within one kind, and only when that kind occurs equally often on both sides. |
+| `PR-TIMEOUT-RAISED` | A test's timeout (`@pytest.mark.timeout`, `timeout=` in a call, a JS test's timeout argument, `this.timeout`, `jest.setTimeout`) or a runner configuration's timeout (`timeout` in a pytest section, `--timeout`, `testTimeout`) is raised. |
+| `PR-ASSERTION-SWALLOWED` | A test present on both sides gains a `try` (or `contextlib.suppress`) around an assertion whose handler catches assertion failures (`AssertionError`, `Exception`, bare `except`, JS `catch`) and neither re-raises nor checks anything. |
+| `PR-MOCK-UNDER-TEST` | A test present on both sides newly patches a name it also calls directly (`patch("m.f")` then `m.f(...)`; spies with `wraps=` excluded), or a JS test file newly mocks its own subject module (`sum.test.js` mocking `./sum`). |
+| `PR-TESTS-EXCLUDED` | A runner or coverage configuration touched by the change gains an exclusion: `--ignore`, `--deselect`, a negated `-k`/`-m` term, `collect_ignore`, `norecursedirs`, coverage `omit`/`exclude_lines`, `testPathIgnorePatterns`, vitest `exclude`. Default exclusions (`node_modules`, `.venv`, `dist`, …) are not reported. In workflows, Makefiles and shell scripts, only lines naming a test runner are read. |
 | `PR-NEW-TAMPERING` | A new repository-check finding of a tampering pattern (exit before assert, constant `__eq__`, runner patching, special-cased input, an assertion that cannot fail, `continue-on-error` on tests, a skippable required gate) in a file the change touched. |
 
 As a GitHub Action (runs in your workflow; nothing leaves it):

@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --ignore=tests/test_old.py"
+timeout = 300
+
+[tool.ruff]
+exclude = ["tests/fixtures"]
