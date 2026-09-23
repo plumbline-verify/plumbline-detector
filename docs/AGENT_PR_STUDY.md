@@ -186,8 +186,10 @@ with all 40.
 - **The 16 false positives:**
   - 7: the skip rule read a machine-learning `.fit(` call as a Jasmine
     `fit(` focus marker.
-  - 7: an assertion was rewritten into a form the rule does not count,
+  - 6: an assertion was rewritten into a form the rule does not count,
     re-wrapped, or only commented-out lines were removed.
+  - 1: traceback text inside a generated output file matched as an
+    assertion.
   - 2: a pre-existing skip was rewritten.
 
   Fixing the `fit(` pattern is the next change to the skip rule, to be
