@@ -84,3 +84,48 @@ Recorded while the run was in progress, before any result was analyzed.
    skipped by a harness error are re-run (`run --retry-errors`); every
    other result is kept unchanged. The number of repositories affected is
    reported with the results.
+
+## Results (2026-09-23; precision check pending)
+
+Harness correction 1 re-ran the 11 repositories skipped by a harness
+error: 10 `FileNotFoundError` from broken symlinks and 1 `OSError` in the
+same size walk. All 11 then completed. No other result was re-run.
+
+**Coverage.** 300 repositories were sampled and 297 analyzed. Three were
+skipped: 1 clone failed and 2 were over 2 GB. 262 met the analysis
+threshold of at least one agent change and at least five human changes.
+12,613 bot changes were excluded.
+
+| Stratum | Repositories | Agent changes with signal | Human changes with signal | MH risk ratio (95% CI) |
+|---|---|---|---|---|
+| **All (primary)** | 262 | 152/6778 (2.24%) | 2206/86236 (2.56%) | **1.01 (0.85–1.22)** |
+| Language: Python | 80 | 87/2306 (3.77%) | 725/24484 (2.96%) | 1.13 (0.88–1.46) |
+| Language: JS/TS | 124 | 57/3750 (1.52%) | 1347/55849 (2.41%) | 0.95 (0.72–1.26) |
+| Language: other | 58 | 8/722 (1.11%) | 134/5903 (2.27%) | 0.69 (0.34–1.41) |
+| Size ≤50 lines | 223 | 10/2655 (0.38%) | 148/36872 (0.40%) | 1.21 (0.59–2.49) |
+| Size 51–500 | 208 | 60/2741 (2.19%) | 678/28643 (2.37%) | 0.92 (0.68–1.24) |
+| Size >500 | 139 | 69/1068 (6.46%) | 1201/12651 (9.49%) | 0.79 (0.62–1.01) |
+
+The agent rate exceeds the human rate in 46 of the 262 repositories.
+
+**Decision rule applied.** The interval on the primary ratio includes 1.
+So, as fixed in advance:
+
+- **No agent effect is stated.** Within the same repositories and period,
+  agent-authored changes carry a qualifying weakening signal at a rate
+  indistinguishable from human-authored changes.
+- **The unmatched comparison is withdrawn from the report.** That is the
+  1.71% in 39 mature libraries. The apparent gap reflected where agents
+  are deployed, as review item A-2 warned.
+
+**What this does not change.** The population rates for agent PRs, and
+their audited precision, measure what agent PRs do. They make no
+comparison with humans. The matched result says that weakening is a
+property of changes in these repositories, whoever writes them. That
+argues for checking every change, not only agents' changes.
+
+**Still to run (pre-registered).** Precision relabel: 100 flagged agent
+changes and 100 flagged human changes, seed 20260931, with an author
+audit at seed 20260932. The result is final only after it. If precision
+differs between the groups by more than 10 points, the adjusted ratio is
+added.
