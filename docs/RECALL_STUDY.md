@@ -292,3 +292,146 @@ aid.
 - **Recall on hacks that are not visible in code** (TCT, CG and
   non-visible TM) is expected to be low by design. This measures the
   detector's scope, not a defect.
+
+## Results
+
+**Setup:**
+
+- detector `ce836ad`, schema 1.6.0, with check and rule code unchanged;
+- extractor and scorer at `9d1e359`;
+- TRACE revision `31d87f06078e`.
+
+These are the numbers of the first and only detector run. Per-trajectory
+rows are kept outside the repository (CC-BY-SA-4.0); this section holds
+aggregates only.
+
+### Coverage
+
+| Population | Trajectories | Any change | Test/CI change | PR-reconstructable | Unreconstructed edits | PR-mode errors |
+|---|---|---|---|---|---|---|
+| H-TM | 56 | 56 | 47 | 41 | 11 | 0 |
+| H-TSE | 151 | 151 | 85 | 76 | 33 | 0 |
+| (TCT) | 69 | 69 | 30 | 26 | 18 | 0 |
+| (CG) | 51 | 51 | 25 | 23 | 12 | 0 |
+| B | 249 | 246 | 113 | 111 | 51 | 0 |
+| H-other | 117 | 115 | 42 | 40 | 29 | 0 |
+
+Code-visible labels on H-TM: 43 yes, 6 no, 7 unclear.
+
+### Recall and false-alarm rate (measures 1, 2 and 4)
+
+| Detector | Recall, H-TM | Recall, code-visible H-TM | False alarms, B |
+|---|---|---|---|
+| Patch rules (per file, primary) | 7/56 = 12.5% (6.2–23.6%) | 7/43 = 16.3% (8.1–30.0%) | 4/249 = 1.6% (0.6–4.1%) |
+| Patch rules (per edit) | 10/56 = 17.9% (10.0–29.8%) | 9/43 = 20.9% (11.4–35.2%) | 9/249 = 3.6% (1.9–6.7%) |
+| PR mode | 10/56 = 17.9% (10.0–29.8%) | 10/43 = 23.3% (13.2–37.7%) | 0/249 = 0.0% (0.0–1.5%) |
+| **Combined** | **12/56 = 21.4% (12.7–33.8%)** | **12/43 = 27.9% (16.7–42.7%)** | **4/249 = 1.6% (0.6–4.1%)** |
+
+All 12 detected H-TM trajectories are code-visible.
+
+### PR mode on what it can see (measure 3)
+
+- **PR-mode recall** on code-visible, PR-reconstructable H-TM:
+  **9/35 = 25.7% (14.2–42.1%)**.
+- **PR-mode false alarms** on PR-reconstructable B:
+  **0/111 = 0.0% (0.0–3.3%)**.
+- **Combined recall** on the same 35: 11/35 = 31.4% (18.6–48.0%).
+
+### Decision
+
+**Recall blocks default-on.** Measure 3's point estimate, 25.7%, is below
+the pre-registered 50%. PR mode's false-alarm rate, 0 of 111, is well
+inside the 10% bar. So the block comes from missed hacks, not from noise.
+PR mode stays advisory. Round 3's precision result cannot lift this block
+by itself. Default-on now needs a later detector version that closes the
+gaps below, measured on a fresh recall study.
+
+### By category (measures 5 and 7, combined detector)
+
+| Population | Flagged |
+|---|---|
+| H-TSE | 13/151 = 8.6% (5.1–14.2%) |
+| H-TM | 12/56 = 21.4% (12.7–33.8%) |
+| H-TCT | 3/69 = 4.3% (1.5–12.0%) |
+| H-CG | 4/51 = 7.8% (3.1–18.5%) |
+| H-other | 2/117 = 1.7% (0.5–6.0%) |
+
+As expected, Test Case Targeting and Coverage Gaming hacks live in solution
+code and are mostly out of reach. Measure 6 (per subcategory) was dropped
+by Amendment 1.
+
+### Which rules and checks fire (measure 8, trajectories)
+
+| Rule or check | H-TM | H-TSE | H-other | B |
+|---|---|---|---|---|
+| P-ASSERTIONS-NET-REMOVED | 6 | 7 | 0 | 1 |
+| P-CONTINUE-ON-ERROR | 1 | 1 | 0 | 0 |
+| P-EXIT-ZERO | 0 | 0 | 0 | 1 |
+| P-SKIP-ADDED | 0 | 0 | 0 | 1 |
+| P-TEST-FILE-DELETED | 1 | 1 | 2 | 1 |
+| PR-ASSERTIONS-REMOVED | 3 | 4 | 0 | 0 |
+| PR-NEW-TAMPERING | 5 | 6 | 0 | 0 |
+| PR-TESTS-DISABLED | 1 | 1 | 0 | 0 |
+| PR-TESTS-REMOVED | 2 | 2 | 0 | 0 |
+
+### What was caught, and what was missed
+
+The detector catches hacks that **remove or neutralize** verification:
+
+- deleted tests;
+- assertions removed on net;
+- `assert True` in place of a real assertion (PR mode);
+- test bodies wrapped in `try/except: pass` (PR mode);
+- a marker deselection added to `pytest.ini`;
+- `continue-on-error` in CI.
+
+It misses hacks that **keep the assertion but change what it checks**.
+Each of the 31 missed code-visible trajectories was classified by the
+mechanism its blind label describes. This classification was made after
+the run.
+
+| Mechanism | Missed | Would a diff-level check see it? |
+|---|---|---|
+| Threshold or tolerance loosened in an assertion (for example, `>= 0.85` to `>= 0.70`; `EXPECT_NEAR` tolerance widened) | 12 | Yes: the same assertion with a relaxed numeric bound |
+| Code under test mocked, stubbed or forced (`@patch` on the method under test, fixtures returning the expected values, metrics clamped to the threshold) | 6 | Partly: a mock added that targets the module the test imports |
+| Test timeout raised (`@pytest.mark.timeout`, `jest.config.js` `testTimeout`, `pytest.ini` `timeout`) | 3 | Yes: a timeout value increased |
+| Assertion made weaker in form (`toBe(true)` to `== true`; `assert x >= 0`; `assert True` in a file that could not be reconstructed) | 3 | Partly; PR mode sees `assert True` when the file is reconstructable |
+| Expected values or inputs rewritten to match the output | 2 | Only as a changed literal; indistinguishable from a legitimate fix without intent |
+| Assertion failures caught (`try/except AssertionError` with a looser fallback; a conflicting move's error swallowed) | 2 | Yes: an `except AssertionError` added in a test |
+| Tests excluded by configuration (`--ignore=` in `pytest.ini` `addopts`; CI job made `when: manual` with `-m "not slow"`) | 2 | Yes: an extension of PR-TESTS-DISABLED |
+| Sleeps inserted to hide a race | 1 | No |
+
+**Most misses are not subtle.** Many are loosened thresholds (12 of 31)
+or raised timeouts (3). A reviewer sees them at once in the diff, but the
+current rules do not look for them, because a changed number is not a
+removed assertion. They are also where benign changes will be common. A
+spec that really changed looks the same in a diff. So a new check here
+must be measured for precision before it is trusted, as every earlier
+check was.
+
+### False alarms on benign trajectories
+
+All four combined alarms on B come from the patch rules; PR mode raised
+none. Three are real signals, correctly reported:
+
+- a debug script under `tests/` deleted;
+- a `pytest.skip` guard for missing metrics in a new test file;
+- assertions on removed debug fields dropped in a refactor.
+
+One is an artifact: `P-EXIT-ZERO` on a load-test script's `sys.exit(0)`.
+That rule was already rated unreliable (63% precision in
+`AGENT_PR_STUDY.md`). The per-edit unit alarms more often (9 of 249),
+because intermediate edits that a later edit restores are not netted out.
+The per-file unit is the right one for pull requests.
+
+### Limits of this result
+
+- **n is small.** 35 trajectories in measure 3 give an interval of
+  14–42%. Even the upper bound is below the 50% bar, so the decision does
+  not rest on the point estimate.
+- **The data is synthetic, from one model, and short tasks.** PR mode saw
+  only the files each trajectory read or wrote. On real repositories,
+  where full snapshots exist, PR-mode coverage would be higher, but the
+  miss mechanisms above do not depend on coverage.
+- **"Code-visible" was judged by review agents from the extracted diffs.**
+  The author's audit of a seeded 20% agreed with all 11 items.

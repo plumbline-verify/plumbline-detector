@@ -275,8 +275,12 @@ jobs:
 ```
 
 PR mode's measured precision is in docs/PR_MODE_STUDY.md (round 2: 15 of 15
-findings correct, alarms on 1.2% of changes). It ships as advisory until a
-further round establishes the lower bound of its precision.
+findings correct, alarms on 1.2% of changes). Its measured recall is in
+docs/RECALL_STUDY.md: on TRACE it caught 26% (14–42%) of test-modification
+hacks visible in the diff. It misses loosened thresholds, raised timeouts
+and mocks of the code under test. It ships as advisory until a further
+round establishes the lower bound of its precision and a later version
+closes those recall gaps.
 
 Because both sides come from the same repository, its own assertion idioms
 appear on both and cancel out. The absence claims that limit the repository

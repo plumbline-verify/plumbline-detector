@@ -284,7 +284,7 @@ not high.
 
 ## Calibration
 
-Precision has been measured, recall has not. Four pre-registered rounds
+Precision has been measured in several studies, recall in one. Four pre-registered rounds
 (20, 20, 30 and 30 held-out repositories; docs/PRECISION_STUDY.md) put
 overall precision at 57%, 55%, 50% and 46%. Fixing each round's causes has
 not raised the next round's figure: the checks that claim an absence
@@ -295,6 +295,21 @@ tampering, so they say nothing about how many real defects, or how many
 adversarial ones, the detector misses. Phase B (Auditing Sabotage Bench,
 docs/PHASE_B.md) came out as predicted: AUROC 0.52, with sabotaged and
 honest variants receiving identical records. Its sabotages corrupt *what is
-computed*, the outcome gap this detector does not address. Recall on
-evidence-channel tampering still needs a benchmark whose sabotage targets
-tests and gates.
+computed*, the outcome gap this detector does not address.
+
+Recall on test tampering was measured on TRACE (docs/RECALL_STUDY.md):
+
+- PR mode caught 9 of 35 test-modification hacks that were visible in
+  reconstructable diffs: 26% (95% CI 14–42%).
+- Patch rules and PR mode together caught 12 of 43 hacks visible in code:
+  28% (17–43%).
+- False alarms on benign trajectories: 0 of 111 for PR mode.
+
+The detector catches removed or neutralized verification: deleted tests,
+removed assertions, `assert True`, and swallowed failures. It misses
+assertions that stay but check less:
+
+- loosened thresholds and tolerances;
+- raised timeouts;
+- mocks of the code under test;
+- tests excluded by configuration.
