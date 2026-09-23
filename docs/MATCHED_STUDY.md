@@ -207,3 +207,31 @@ agent changes. So, for exactly those 10 items:
 Supplement extraction for amendment 1 hit the same full disk. One
 repository failed to clone and was retried after space was freed. No
 label had been read.
+
+## Precision relabel: results (final)
+
+- **Sample.** 200 flagged changes, all 200 reproduced on re-extraction.
+- **Labels.** Eight independent reviewers, 25 blind items each. Under
+  amendment 1, one fresh reviewer labeled the 10 supplemented items; that
+  changed none of the 10 labels. The results below are identical with and
+  without the replacement.
+
+| Group | Labeled | Precision (95% CI) | Weakening / benign / unclear, of TP |
+|---|---|---|---|
+| Agent | 100 | 94% (88–97%) | 11 / 69 / 14 |
+| Human | 100 | 96% (90–98%) | 15 / 59 / 22 |
+
+- **Precision difference: 2 points**, within the pre-registered 10-point
+  threshold, so no adjustment applies. **The primary result is final:
+  Mantel–Haenszel risk ratio 1.01 (0.85–1.22).**
+- **Author audit.** 40 of 40 seeded items agree. The labelers and the
+  author are instances of the same model family, so this measures
+  consistency, not ground truth.
+- **Weakening share.** Among true signals, the share that visibly
+  weakens verification is similar in both groups: 12% for agents, 16% for
+  humans. The benign majority is the same kinds of change in both:
+  environment guards on skips, refactors, removed features and optional
+  CI steps.
+- **What is published.** Per-item labels stay private: their reasons
+  quote code identifiers from repositories whose identity is
+  internal-only under A-2. Only these aggregates are published.
