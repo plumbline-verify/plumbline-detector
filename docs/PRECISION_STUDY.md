@@ -517,3 +517,90 @@ tests only (benchmarks are out of its scope; see "Scope decision").
 - A check with at least 20 findings that grades experimental in both round 3
   and round 4 is taken out of the default operator set in the next schema
   version, or redesigned; it is not tuned against round 4.
+
+
+## Results (round 4, detector `ff5bb21`, schema 1.4.0)
+
+All thirty repositories cloned; none missing. 146 findings labeled by four
+independent agents.
+
+### Precision
+
+| Check | Findings (pool) | Labeled | TP | FP-detector | FP-scope | Precision | 95% CI |
+|---|---|---|---|---|---|---|---|
+| EC-ASSERTION-NONSTANDARD | 1 | 1 | 1 | 0 | 0 | 100% | 21%–100% |
+| EC-ASSERTION-NONSTANDARD-JS | 12 | 12 | 10 | 1 | 1 | 83% | 55%–95% |
+| EC-EQUALITY-OVERRIDE | 2 | 2 | 0 | 2 | 0 | 0% | 0%–66% |
+| EC-NO-ASSERTION | 247 | 40 | 21 | 18 | 1 | 52% | 37%–67% |
+| EC-NO-ASSERTION-JS | 488 | 40 | 9 | 31 | 0 | 22% | 12%–38% |
+| EC-TESTS-NOT-RUN | 6 | 6 | 5 | 1 | 0 | 83% | 44%–97% |
+| EC-TESTS-NOT-RUN-JS | 56 | 40 | 16 | 24 | 0 | 40% | 26%–55% |
+| GT-AGGREGATOR-PERMISSIVE | 1 | 1 | 1 | 0 | 0 | 100% | 21%–100% |
+| GT-CONTINUE-ON-ERROR | 4 | 4 | 4 | 0 | 0 | 100% | 51%–100% |
+| all labeled (unweighted) | | 146 | 67 | 77 | 2 | 46% | 38%–54% |
+
+**Pooled precision is 46% (38–54%). The pre-registered 80% target is not
+met.** Round 4 is the lowest of the four rounds (57%, 55%, 50%, 46%).
+
+### Where the false positives came from
+
+- **EC-TESTS-NOT-RUN-JS (24 FP-detector, all in execa):** ava macros called
+  without a title, `test(macro, ...args)`, with the title supplied by
+  `macro.title`. The detector requires a title argument, so it read these
+  as bodiless tests (or took a macro argument as the title). One idiom in
+  one repository, 60% of the check's sample.
+- **EC-NO-ASSERTION-JS (31 FP-detector):**
+  - undici's assertions named-imported from `node:assert`
+    (`const { strictEqual } = require('node:assert')`): 14
+  - hono's compile-time `type verify = Expect<Equal<…>>`, enforced by
+    `tsc -p tsconfig.spec.json` in its test script: 13
+  - execa ava macros passed by reference: 2
+  - a trpc `@ts-expect-error` checked by a CI type-check job, and an msw
+    type test run under vitest typecheck: 2
+- **EC-NO-ASSERTION (18 FP-detector, 1 FP-scope):** pip's
+  `result.did_create(...)` (a method on the harness's result object that
+  asserts) and its harness's exit-status checks: 16; `warnings.simplefilter
+  ("error")` in pydantic-settings; a `test_*` function called through a
+  module attribute in sqlmodel. The FP-scope item is a test of pip's own
+  test harness.
+- **EC-TESTS-NOT-RUN (1):** twine's integration tests, excluded by
+  `--ignore-glob` in addopts but passed as an explicit path by a tox
+  environment CI runs (pytest does not apply the ignore to explicit paths,
+  per the labeler).
+- **EC-EQUALITY-OVERRIDE (2):** propcache's stateful `__eq__` that raises
+  once and then returns False, which the definition makes UNKNOWN.
+- **EC-ASSERTION-NONSTANDARD-JS (1):** an unawaited `.rejects` under vitest
+  4, whose runner awaits pending assertions at test end (the labeler's
+  reading, not verified against vitest's source).
+
+### Label audit
+
+The author audited the seeded 20% (30 items) against the repositories and
+agrees with all 30. Facts checked directly: undici's destructured
+`node:assert` imports, hono's `tsc` step in its test script, execa's
+`macro.title`, and propcache's stateful `__eq__`. One labeler inconsistency
+was found outside the audit sample. For pip tests whose only check is the
+harness's own exit-status and stderr check, two labelers wrote TP (#25,
+#34, #38, #42) and one wrote FP-detector (#23, #40). Resolving the split
+either way gives 63–69 TP, or 43–47%. No label was changed.
+
+### What four rounds say
+
+1. **The fixes worked, and the plateau held.** Every round-3 cause fixed in
+   1.4.0 is absent from round 4, but new repositories brought new idioms at
+   the same rate. The error distribution is open-ended: each repository can
+   define its own assertion mechanism (a harness method, a type-level
+   assertion, a destructured import, a macro), and an allowlist of
+   mechanisms trails the next repository by construction.
+2. **The pre-registered rule applies.** Three checks produced at least 20
+   findings and graded experimental in both round 3 and round 4:
+   EC-NO-ASSERTION (65%, 52%), EC-NO-ASSERTION-JS (38%, 22%) and
+   EC-TESTS-NOT-RUN-JS (28%, 40%). Under the rule fixed before this round,
+   the next schema version removes them from the default operator set or
+   redesigns them. They are not tuned against round 4.
+3. **What holds up:** GT-CONTINUE-ON-ERROR (4 of 4 this round, 12 of 14
+   across rounds), EC-TESTS-NOT-RUN (5 of 6), EC-ASSERTION-NONSTANDARD-JS
+   (83%, the only check at advisory grade), and the constant-assertion
+   patterns in both languages. These are narrow, syntactic claims about a
+   construct at one location; the failing checks make open-world claims
+   ("no assertion exists anywhere this test reaches").

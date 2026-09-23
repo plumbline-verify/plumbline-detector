@@ -284,11 +284,12 @@ not high.
 
 ## Calibration
 
-Precision has been measured, recall has not. Three pre-registered rounds
-(20, 20 and 30 held-out repositories; docs/PRECISION_STUDY.md) put overall
-precision at 57%, 55% and 50%, with wide per-check differences. Schema 1.4.0's
-fixes are aimed at round 3's causes; whether they raise precision on unseen
-code is for round 4 to say, not for the round-3 regression figures. Those rounds used
+Precision has been measured, recall has not. Four pre-registered rounds
+(20, 20, 30 and 30 held-out repositories; docs/PRECISION_STUDY.md) put
+overall precision at 57%, 55%, 50% and 46%. Fixing each round's causes has
+not raised the next round's figure: the checks that claim an absence
+(EC-NO-ASSERTION, -JS, EC-TESTS-NOT-RUN-JS) meet a new repository-specific
+idiom in nearly every new repository. Only one check is at advisory grade. Those rounds used
 open-source Python projects that are presumed not to contain deliberate
 tampering, so they say nothing about how many real defects, or how many
 adversarial ones, the detector misses. Phase B (Auditing Sabotage Bench,
