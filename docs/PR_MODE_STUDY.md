@@ -108,3 +108,32 @@ decide "new" for tampering findings by construct identity (check, file,
 job or test), not by message; match removed tests to re-added ones by
 function name without the class and by body; report partial effects
 (matrix legs, Python versions) as partial.
+
+## Round 2 protocol (fixed before any run; committed before results)
+
+**Detector under test.** Commit `3322267`, schema 1.6.0, which fixes the two
+causes found in round 1. No change to check code between the first run and
+the reported numbers.
+
+**Repositories.** Twenty public repositories used in no earlier study
+(development set, precision rounds 1–4, PR-mode round 1), fixed here before
+cloning; a repository that cannot be cloned is reported missing, not
+replaced.
+
+Python (12): python/typing_extensions, jaraco/keyring, jaraco/zipp,
+sqlalchemy/mako, benjaminp/six, pytest-dev/iniconfig,
+python-jsonschema/check-jsonschema, hynek/argon2-cffi,
+pypa/pyproject-hooks, tkem/cachetools, agronholm/typeguard,
+agronholm/cbor2.
+
+JavaScript / TypeScript (8): expressjs/cors, expressjs/morgan,
+jshttp/mime-types, sindresorhus/p-limit, unjs/defu, unjs/ufo,
+fastify/fastify-cors, pinojs/sonic-boom.
+
+**Changes, measures, labels, audit and decision rules.** As in round 1: the
+30 most recent first-parent commits per repository; alarm rate; factual
+precision labeled by independent review agents (all findings, or 60 drawn
+with seed 20260924); benign or weakening for each TP; the author audits a
+seeded 20% (seed 20260925). Ship as default-on if precision is at least 90%
+with a lower bound of at least 80% and the alarm rate is at most 10%;
+advisory between 80% and that bar; not shipped below 80%.
