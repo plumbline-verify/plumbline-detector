@@ -160,3 +160,35 @@ The author audits a seeded 20% (seed 20260929).
   agent PRs.
 - If PR-level precision is below 80%, the published signal rate becomes a
   range bounded by the precision interval, and the paper says so.
+
+## PR-level precision audit: results
+
+200 PRs; labels in `docs/agent_pr_study/pr_level_audit_labels.jsonl`
+(without PR identifiers or patches). The four labelers' files were checked
+item by item against their batches before scoring. The author audited the
+seeded 20% (40 PRs, seed 20260929) against the patch evidence and agrees
+with all 40.
+
+- **PR-level precision: 184 of 200 (92%; 95% Wilson interval 87–95%).**
+  This is above 80%, so by the pre-registered rule the signal rate is
+  reported as a point estimate, not a range.
+- **Precision-adjusted signal rate: 6.32% of merged agent PRs** (range
+  5.88–6.66%, from the lower and upper bounds of both intervals).
+- **Visible weakening.** Of the 184 true positives:
+  - 55 are weakening (30%; 95% CI 24–37%);
+  - 89 are benign;
+  - 40 are unclear from the patch.
+
+  That implies **about 1.9% of merged agent PRs (1.4–2.5%)** visibly
+  weaken verification with no replacement. If every unclear case were
+  weakening, the figure would be 3.3%. The earlier estimate of "about 2%"
+  holds.
+- **The 16 false positives:**
+  - 7: the skip rule read a machine-learning `.fit(` call as a Jasmine
+    `fit(` focus marker.
+  - 7: an assertion was rewritten into a form the rule does not count,
+    re-wrapped, or only commented-out lines were removed.
+  - 2: a pre-existing skip was rewritten.
+
+  Fixing the `fit(` pattern is the next change to the skip rule, to be
+  measured on fresh data.
