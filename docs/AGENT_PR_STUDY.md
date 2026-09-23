@@ -116,8 +116,9 @@ product of the rates, with wide uncertainty from the 30-item label samples.
 the 1,170 human-maintained changes from the two PR-mode studies (39 mature
 open-source libraries; commits compared with their parents). **1.71% (95%
 CI 1.1–2.6%) carried a qualifying signal**, against 6.87% for merged agent
-PRs, about four times fewer. The populations differ: the agent PRs span
-116,000 repositories of every age and quality, and the human set is
+PRs, about four times fewer. The populations differ: the merged agent PRs
+analyzed come from 11,029 repositories (25,402 in the curated set) of every
+age and quality, and the human set is
 well-maintained libraries. Units differ too: an agent PR against a human
 commit. So this is a pointer for a controlled study, not a finding.
 
