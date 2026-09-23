@@ -474,3 +474,46 @@ reported (117 of 123 FP-detector, 72 of 74 FP-scope). These are the
 repositories the fixes were written against, so the figures show that the
 fixes do what they were meant to and break nothing labeled. They are **not**
 a precision estimate; only a fresh held-out round is.
+
+## Round 4 protocol (fixed before any run; committed before results)
+
+**Detector under test.** Commit `ff5bb21`, schema 1.4.0, ruleset fingerprint
+`sha256:2f0dc41834e30244f1f24a9b46312a88b9a2a41643804b1ce4ddd454e129654b` (read from `fingerprint.json` at that commit). No check code changes
+between the first round-4 run and the reported numbers.
+
+**Repositories.** None used in development (ACCEPTANCE.md, the JS/TS
+development set), round 1, round 2 or round 3. If a repository cannot be
+cloned it is reported missing, not replaced. Each is cloned at the default
+branch head on the day of the run; the commit is recorded.
+
+Python (20): pallets/markupsafe, aio-libs/frozenlist, aio-libs/propcache,
+pypa/pip, pypa/twine, python-jsonschema/referencing, pytest-dev/pluggy,
+pytest-dev/pytest-asyncio, pytest-dev/pytest-cov, fastapi/sqlmodel,
+encode/django-rest-framework, hgrecco/pint, python-humanize/humanize,
+mahmoud/boltons, more-itertools/more-itertools, pydantic/pydantic-settings,
+tox-dev/filelock, tox-dev/platformdirs, agronholm/anyio,
+agronholm/apscheduler.
+
+JavaScript / TypeScript (10): sindresorhus/ky, sindresorhus/execa,
+unjs/ofetch, honojs/hono, trpc/trpc, mswjs/msw, immerjs/immer,
+pmndrs/zustand, nodejs/undici, tj/commander.js.
+
+**Sampling, labels, labelers, audit.** As in rounds 1–3: findings pooled per
+check across all thirty repositories; all labeled if 40 or fewer, else 40 at
+random (seed 20260922); TP / FP-detector / FP-scope against the README
+definitions at the detector commit; independent labeling agents without
+access to the detector code or earlier rounds; the author audits a seeded
+random 20% (seed 20260923). GT-NO-GATE is not labeled. New for this round,
+the labelers' definitions state that EC-NO-ASSERTION covers correctness
+tests only (benchmarks are out of its scope; see "Scope decision").
+
+**Decision rules, fixed now.**
+- Pooled precision (all labeled findings, unweighted) is compared with the
+  80% target. The target is met if the point estimate is at least 80%; the
+  95% Wilson interval is reported alongside.
+- Each check's grade after this round follows from its round-4 measurement
+  by the rule in "Precision targets"; measurements.json is updated with
+  round 4 whatever the result.
+- A check with at least 20 findings that grades experimental in both round 3
+  and round 4 is taken out of the default operator set in the next schema
+  version, or redesigned; it is not tuned against round 4.
