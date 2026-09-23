@@ -221,3 +221,11 @@ extractable") and counted in coverage. The replay was restarted from the
 beginning with fewer parallel workers, so it would not share memory with
 the matched-study extraction. The draw, the clones and the detector are
 unchanged.
+
+**Second restart (before any result was read).** The restarted replay
+ran while the machine's disk filled, because large repositories' trees
+were extracted in parallel with other work. On a full disk, extraction
+failures would have been recorded as "tree not extractable". The run was
+stopped, its partial output deleted unread, and space freed. The replay
+now aborts if less than 2 GB is free, rather than recording a skip, and
+it was restarted from the beginning with 3 workers.

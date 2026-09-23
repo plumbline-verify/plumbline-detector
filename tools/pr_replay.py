@@ -48,6 +48,10 @@ def replay(args):
                     if not os.path.isdir(d):
                         materialize(repo, rev, d)
             except subprocess.CalledProcessError:
+                # a full disk is a harness failure, not a property of the
+                # repository: stop rather than record it as a skip
+                if shutil.disk_usage(tmp).free < 2 * 1024**3:
+                    raise RuntimeError("replay aborted: less than 2 GB free")
                 # a tree that cannot be extracted (paths the filesystem
                 # rejects) is reported, never dropped
                 rows.append({"repo": name, "commit": c, "skipped": "tree not extractable"})

@@ -204,3 +204,6 @@ agent changes. So, for exactly those 10 items:
   plus the supplement.
 - Those labels replace the original labels for the 10 items.
 - Results report precision both ways, with and without the replacement.
+Supplement extraction for amendment 1 hit the same full disk. One
+repository failed to clone and was retried after space was freed. No
+label had been read.
