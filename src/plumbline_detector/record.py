@@ -67,6 +67,7 @@ FINGERPRINT_MODULES = [
     "js/checks.py",
     "catalog.py",
     "render.py",
+    "pr.py",
 ]
 
 
@@ -154,6 +155,33 @@ def _canonical(obj) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
+def build_models(snap, required_checks=(), gate_files=()):
+    """GitHub Actions model, gate info, Python model and pytest collection
+    model, with collected files promoted to test code and dead test-path
+    files reclassified as data. Shared by analyze() and PR mode."""
+    gm = gha_model.build(snap)
+    gate = gha_model.gate_info(snap, list(required_checks), list(gate_files))
+    pm = py_common.build(snap)
+    coll = py_collection.build(snap, pm, gm)
+    # Files that pytest's configuration collects are test code, whatever their name.
+    for p in sorted(coll.collected_files):
+        if p in pm.impl_paths:
+            pm.impl_paths.remove(p)
+            pm.test_paths.append(p)
+            pm.files[p].is_test = True
+    pm.test_paths.sort()
+    # Test-path files nothing executes and nothing imports are test data.
+    moved = set(py_liveness.reclassify(pm, coll, snap))
+    if moved:
+        keep = [i for i, it in enumerate(coll.items) if it.file not in moved]
+        remap = {old: new for new, old in enumerate(keep)}
+        coll.data_items = len(coll.items) - len(keep)
+        coll.items = [coll.items[i] for i in keep]
+        coll.not_run = {remap[i]: v for i, v in coll.not_run.items() if i in remap}
+        coll.scope_excluded = {remap[i] for i in coll.scope_excluded if i in remap}
+    return gm, gate, pm, coll
+
+
 def analyze(
     root: str,
     required_checks: list[str] | None = None,
@@ -175,26 +203,7 @@ def analyze(
     }
     config_hash = "sha256:" + hashlib.sha256(_canonical(config).encode()).hexdigest()
 
-    gm = gha_model.build(snap)
-    gate = gha_model.gate_info(snap, required_checks, gate_files)
-    pm = py_common.build(snap)
-    coll = py_collection.build(snap, pm, gm)
-    # Files that pytest's configuration collects are test code, whatever their name.
-    for p in sorted(coll.collected_files):
-        if p in pm.impl_paths:
-            pm.impl_paths.remove(p)
-            pm.test_paths.append(p)
-            pm.files[p].is_test = True
-    pm.test_paths.sort()
-    # Test-path files nothing executes and nothing imports are test data.
-    moved = set(py_liveness.reclassify(pm, coll, snap))
-    if moved:
-        keep = [i for i, it in enumerate(coll.items) if it.file not in moved]
-        remap = {old: new for new, old in enumerate(keep)}
-        coll.data_items = len(coll.items) - len(keep)
-        coll.items = [coll.items[i] for i in keep]
-        coll.not_run = {remap[i]: v for i, v in coll.not_run.items() if i in remap}
-        coll.scope_excluded = {remap[i] for i in coll.scope_excluded if i in remap}
+    gm, gate, pm, coll = build_models(snap, required_checks, gate_files)
     ctx = Context(snap, coll)
     data_set = set(pm.data_paths)
     results = {}

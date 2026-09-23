@@ -212,9 +212,23 @@ def local_definitions(root, src) -> set:
             out.add(text(n.child_by_field_name("name"), src))
         elif n.type == "variable_declarator":
             nm = n.child_by_field_name("name")
-            if nm is not None and nm.type == "identifier":
+            if nm is not None and nm.type == "identifier" and not _requires_test_module(n.child_by_field_name("value"), src):
                 out.add(text(nm, src))
     return out
+
+
+TEST_MODULES = frozenset({"node:test", "test", "ava", "vitest", "@jest/globals", "mocha", "tap", "tape", "uvu", "@playwright/test"})
+
+
+def _requires_test_module(value, src) -> bool:
+    """`require('node:test')` (or `.test` of it): binds the framework's own
+    primitive, not a local function that happens to share its name."""
+    while value is not None and value.type in ("member_expression", "await_expression"):
+        value = value.child_by_field_name("object") if value.type == "member_expression" else (value.named_children[0] if value.named_children else None)
+    if value is None or value.type != "call_expression" or text(value.child_by_field_name("function"), src) not in ("require", "import"):
+        return False
+    args = value.child_by_field_name("arguments")
+    return bool(args and args.named_children and args.named_children[0].type == "string" and text(args.named_children[0], src)[1:-1] in TEST_MODULES)
 
 
 def _first_string(call, src):

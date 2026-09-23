@@ -107,3 +107,48 @@ def diff_main(argv=None) -> int:
             print(f"~ {c['id']}: {verdicts_old.get(c['id'])} -> {c['verdict']}")
     print(f"{len(added)} new, {len(resolved)} resolved")
     return 1 if added else 0
+
+
+def pr_main(argv=None) -> int:
+    """plumbline-pr: did a change weaken verification? Compares two snapshot
+    directories, or two git revisions of a local repository (materialized
+    with `git archive`; nothing is fetched). Exit status 1 if any PR check
+    fails, 0 otherwise."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    from . import pr
+
+    ap = argparse.ArgumentParser(prog="plumbline-pr", description=pr_main.__doc__)
+    ap.add_argument("base", help="base snapshot directory, or a git revision with --repo")
+    ap.add_argument("head", help="head snapshot directory, or a git revision with --repo")
+    ap.add_argument("--repo", help="local git repository whose revisions BASE and HEAD are compared")
+    ap.add_argument("-o", "--out", help="write the PR record here instead of stdout")
+    ap.add_argument("--format", choices=["json", "markdown"], default="json")
+    a = ap.parse_args(argv)
+    tmp = None
+    try:
+        if a.repo:
+            tmp = tempfile.mkdtemp(prefix="plumbline-pr-")
+            dirs = []
+            for label, rev in (("base", a.base), ("head", a.head)):
+                d = os.path.join(tmp, label)
+                os.makedirs(d)
+                archive = subprocess.run(["git", "-C", a.repo, "archive", "--format=tar", rev], capture_output=True, check=True).stdout
+                subprocess.run(["tar", "-x", "-C", d], input=archive, check=True)
+                dirs.append(d)
+            base_dir, head_dir = dirs
+        else:
+            base_dir, head_dir = a.base, a.head
+        record = pr.compare(base_dir, head_dir)
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+    text = pr.dumps(record) if a.format == "json" else pr.to_markdown(record)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    else:
+        sys.stdout.write(text)
+    return 1 if record["summary"]["FAIL"] else 0
