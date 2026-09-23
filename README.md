@@ -259,6 +259,15 @@ measures only the author's imagination.
 python tools/seeded_eval.py --corpus CORPUS_DIR --host path/to/host-repo --out results.json
 ```
 
+**Precision rounds.** `tools/study_round.py` runs one held-out round of the
+precision study end to end: `prepare` clones the pre-registered repositories,
+runs the detector, draws the sample and writes the labelers' packet;
+`finalize` scores the labels, writes the round's files under
+`docs/precision/` and rebuilds `measurements.json`, which moves each check's
+grade. `tools/regress_labels.py` re-runs earlier rounds' labeled findings
+against the current ruleset before a change is versioned. The loop is
+described in docs/PRECISION_STUDY.md, "How the detector learns".
+
 ### Evidence channel (JavaScript / TypeScript)
 
 These carry a `-JS` suffix; their precision is measured separately.

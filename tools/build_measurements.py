@@ -12,17 +12,22 @@ from collections import defaultdict
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Round metadata, as pre-registered in docs/PRECISION_STUDY.md.
-ROUNDS = {
-    1: {"schema": "1.1.0", "detector_commit": "ebeaaf0", "ruleset_fingerprint": "sha256:3dc55876e94295047850de8c6df2aacdc8bea90303d712c25c60f6a30b75792b", "date": "2026-09-22"},
-    2: {"schema": "1.2.0", "detector_commit": "dfb2c43", "ruleset_fingerprint": "sha256:2db2c62cd6808bab42af532fe03d7a080afb1f0159614b65d0b1e43673dd0410", "date": "2026-09-22"},
-    3: {"schema": "1.3.0", "detector_commit": "ea36d78", "ruleset_fingerprint": "sha256:47147ca9f073da2cc48d5265613488eca4294726d7de9ff5ad9471b5f79d6e64", "date": "2026-09-23"},
-}
+
+
+def rounds_meta():
+    """Round metadata (schema, detector commit, ruleset fingerprint, date),
+    as pre-registered in docs/PRECISION_STUDY.md, from each round's
+    docs/precision/roundN/round.json."""
+    out = {}
+    for f in sorted(ROOT.glob("docs/precision/round*/round.json")):
+        meta = json.loads(f.read_text())
+        out[meta.pop("round")] = meta
+    return out
 
 
 def main():
     rounds = []
-    for n, meta in sorted(ROUNDS.items()):
+    for n, meta in sorted(rounds_meta().items()):
         rows = [json.loads(l) for l in open(ROOT / f"docs/precision/round{n}/labeled_findings.jsonl")]
         repos = json.load(open(ROOT / f"docs/precision/round{n}/repositories.json"))
         checks = defaultdict(lambda: {"labeled": 0, "tp": 0, "fp_detector": 0, "fp_scope": 0, "pool": 0})
