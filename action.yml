@@ -1,0 +1,65 @@
+name: Plumbline PR verification check
+description: >-
+  Reports whether a pull request weakened its own verification: assertions
+  removed from running tests, tests disabled or removed, and tampering
+  constructs introduced (success exits in tests, always-true __eq__, runner
+  patching, continue-on-error on test jobs, skippable required gates).
+  Runs entirely in your workflow; nothing is sent anywhere.
+branding:
+  icon: check-square
+  color: gray-dark
+inputs:
+  base:
+    description: Base revision (defaults to the pull request's base SHA).
+    required: false
+    default: ""
+  head:
+    description: Head revision (defaults to the pull request's head SHA).
+    required: false
+    default: ""
+  fail-on-findings:
+    description: >-
+      "true" fails the job when a finding is reported. The default is
+      "false" (advisory): findings appear in the job summary only.
+    required: false
+    default: "false"
+outputs:
+  findings:
+    description: Number of findings.
+    value: ${{ steps.run.outputs.findings }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install Plumbline
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}"
+    - name: Compare base and head
+      id: run
+      shell: bash
+      env:
+        BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
+        HEAD: ${{ inputs.head || github.event.pull_request.head.sha }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+      run: |
+        set -euo pipefail
+        if [ -z "$BASE" ] || [ -z "$HEAD" ]; then
+          echo "::error::no base/head revision: run on pull_request events or set the inputs"
+          exit 2
+        fi
+        # both revisions must be present locally (use actions/checkout with fetch-depth: 0)
+        status=0
+        plumbline-pr "$BASE" "$HEAD" --repo . -o plumbline-pr.json || status=$?
+        plumbline-pr "$BASE" "$HEAD" --repo . --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+        n=$(python -c "import json; print(json.load(open('plumbline-pr.json'))['summary']['findings'])")
+        echo "findings=$n" >> "$GITHUB_OUTPUT"
+        if [ "$status" -gt 1 ]; then
+          echo "::error::plumbline-pr failed (exit $status)"
+          exit "$status"
+        fi
+        if [ "$n" -gt 0 ] && [ "$FAIL_ON_FINDINGS" = "true" ]; then
+          exit 1
+        fi

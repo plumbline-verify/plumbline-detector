@@ -258,6 +258,26 @@ fails.
 | `PR-TESTS-REMOVED` | Tests deleted from a file, or with their file, not re-added anywhere under the same name, when the file does not gain at least as many tests as it lost. |
 | `PR-NEW-TAMPERING` | A new repository-check finding of a tampering pattern (exit before assert, constant `__eq__`, runner patching, special-cased input, an assertion that cannot fail, `continue-on-error` on tests, a skippable required gate) in a file the change touched. |
 
+As a GitHub Action (runs in your workflow; nothing leaves it):
+
+```yaml
+on: pull_request
+jobs:
+  plumbline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: <owner>/plumbline-detector@<version>
+        with:
+          fail-on-findings: "false"   # advisory: findings go to the job summary
+```
+
+PR mode's measured precision is in docs/PR_MODE_STUDY.md (round 2: 15 of 15
+findings correct, alarms on 1.2% of changes). It ships as advisory until a
+further round establishes the lower bound of its precision.
+
 Because both sides come from the same repository, its own assertion idioms
 appear on both and cancel out. The absence claims that limit the repository
 checks' precision are not made. A finding states what the change did, not
