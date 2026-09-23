@@ -189,3 +189,18 @@ are lower bounds.
 The gap between the crude and stratified ratios shows that agents are
 somewhat more common in repositories where changes are flagged less
 often. Stratifying by repository removes that.
+
+**Relabel amendment 1 (after packets were issued, before any label was
+written or read).** The 300-line cap on each file's patch hid the
+triggering lines of at least one flagged rule in 10 of the 200 packets: 7
+agent and 3 human. A labeler who cannot see the trigger would lean
+toward FP, and the 7-to-3 imbalance would bias the comparison against
+agent changes. So, for exactly those 10 items:
+
+- A supplement shows every added or removed line that the flagged rule's
+  own pattern (`tools/patch_scan.py`) matches, with 4 lines of context
+  either side, and the scanner's count detail.
+- One fresh blind reviewer labels the 10 items from the original packet
+  plus the supplement.
+- Those labels replace the original labels for the 10 items.
+- Results report precision both ways, with and without the replacement.
