@@ -41,6 +41,12 @@ the evidence a codebase presents (its tests and its merge gate) actually
 verify anything? It has no opinion on whether an experiment's code
 implements its paper.
 
+**How to report it.** We tested the detector against a published sabotage
+benchmark that measures a different construct: falsified research results
+via corrupted evaluation code. The detector correctly showed no signal
+(AUROC 0.52). We report this because a detector that scored well there
+would have been measuring something other than what we claim.
+
 So a result near chance is the expected outcome, and it is the correct one:
 the detector does not claim to find research sabotage, and it does not.
 It is not a failed attempt at the benchmark's task; the benchmark measures
