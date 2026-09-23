@@ -59,3 +59,11 @@ def test_cli_git_revisions(tmp_path):
     out = tmp_path / "pr.json"
     assert pr_main(["HEAD~1", "HEAD", "--repo", str(repo), "-o", str(out)]) == 1
     assert '"PR-TESTS-DISABLED"' in out.read_text()
+
+
+def test_moves_and_preexisting_constructs_are_not_reported():
+    """PR-study causes: tests moved into a renamed class in another file,
+    and a conditional continue-on-error that was already there (the change
+    only adds a matrix leg)."""
+    rec = _run("discrim-r1")
+    assert rec["summary"] == {"FAIL": 0, "findings": 0}

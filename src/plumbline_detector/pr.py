@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
 
 from . import SCHEMA_VERSION, __version__, snapshot
@@ -115,6 +116,20 @@ def _changed_files(base, head) -> set:
     return {p for p in paths if base.files.get(p) != head.files.get(p) or (p in base.unread) != (p in head.unread)}
 
 
+def _bare(key) -> str:
+    """Python: the function name alone; JS: the title."""
+    return key[1] if key[2].isdigit() else key[2]
+
+
+_VOLATILE = re.compile(r"\[[^\]]*\]|\([^)]*\d[^)]*\)|\d+")
+
+
+def _construct(message: str) -> str:
+    """A finding message with its volatile parts removed: bracketed lists,
+    parenthesized counts, numbers."""
+    return _VOLATILE.sub("", message)
+
+
 def _name(key) -> str:
     # Python keys: (file, class, name); JS keys: (file, title, occurrence)
     if key[2].isdigit():
@@ -140,10 +155,12 @@ def compare(base_dir: str, head_dir: str) -> dict:
         if b.running and not h.running:
             results["PR-TESTS-DISABLED"]["findings"].append(Location(h.file, h.line, f"test {_name(key)} ran before this change and does not run after it"))
 
-    head_names = {_name(k) for k in inv_head}
+    # a test re-added anywhere under the same function name (whatever its
+    # class or file) was moved, not removed
+    head_names = {_name(k) for k in inv_head} | {_bare(k) for k in inv_head}
     by_file: dict = {}
     for key in set(inv_base) - set(inv_head):
-        if inv_base[key].running and _name(key) not in head_names:
+        if inv_base[key].running and _name(key) not in head_names and _bare(key) not in head_names:
             by_file.setdefault(key[0], []).append(key)
     for file, keys in sorted(by_file.items()):
         added = [k for k in set(inv_head) - set(inv_base) if k[0] == file]
@@ -155,12 +172,15 @@ def compare(base_dir: str, head_dir: str) -> dict:
             )
 
     rec_base, rec_head = analyze(base_dir), analyze(head_dir)
-    before = {f["id"] for c in rec_base["checks"] for f in c["findings"]}
+    # "new" is decided by construct identity, not by message text: counts
+    # (matrix legs) and lists (an aggregator's needs) in a message change
+    # when the construct itself was already there
+    before = {(c["id"], f["file"], _construct(f["message"])) for c in rec_base["checks"] for f in c["findings"]}
     for c in rec_head["checks"]:
         if c["id"] not in TAMPER_CHECKS:
             continue
         for f in c["findings"]:
-            if f["id"] not in before and f["file"] in changed:
+            if (c["id"], f["file"], _construct(f["message"])) not in before and f["file"] in changed:
                 results["PR-NEW-TAMPERING"]["findings"].append(Location(f["file"], f["line"], f"{c['id']}: {f['message']}", {"check": c["id"]}))
 
     checks = []

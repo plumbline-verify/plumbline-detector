@@ -1,0 +1,16 @@
+on: [pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+        experimental: [false]
+        include:
+          - python: "3.14"
+            experimental: true
+          - python: "3.15"
+            experimental: true
+    steps:
+      - run: pytest
