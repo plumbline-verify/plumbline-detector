@@ -105,7 +105,7 @@ def parse_label(label) -> dict:
 # ---- extraction -------------------------------------------------------------
 
 LINE_PREFIX = re.compile(r"^\s*\d+(\t|→)")
-ERROR_RE = re.compile(r"^\s*(Error\b|<tool_use_error>)|edit failed|has not been read yet|old_string not found|String to replace not found|No such file or directory|Permission denied", re.I)
+ERROR_RE = re.compile(r"^\s*(Error\b|<tool_use_error>|File not found\b|File does not exist\b)|edit failed|has not been read yet|old_string not found|String to replace not found|No such file or directory|Permission denied", re.I)
 
 
 def _strip_read(out: str):

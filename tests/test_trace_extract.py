@@ -38,6 +38,12 @@ def test_replay_reconstructs_reads_edits_writes_and_bash():
     assert len(r["events"]) == 4
 
 
+def test_file_not_found_read_is_not_content():
+    calls = [{"name": "Read", "parameters": {"file_path": "/p/tests/test_n.py"}}, {"name": "Write", "parameters": {"file_path": "/p/tests/test_n.py", "content": "def test_n():\n    assert 1\n"}}]
+    r = trace_extract.replay(_conv(calls, ["File not found: /p/tests/test_n.py", "ok"]))
+    assert r["files"][0]["status"] == "added" and r["files"][0]["base"] is None
+
+
 def test_labels_map_to_taxonomy():
     p = trace_extract.parse_label('["Assertion Weakening", "Hardcoded Outputs"]')
     assert p["categories"] == ["Test Case Targeting", "Test Modification"] and not p["benign"]

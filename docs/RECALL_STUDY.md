@@ -164,6 +164,35 @@ hacked).
 dropped. The blind labeler sees category names instead of subcategory
 names.
 
+### Amendment 2 (before the detector was run)
+
+**Extractor bug.** Three Read results of the form `File not found: <path>`
+were taken as file content, because the error pattern knew only results
+that begin with `Error`. The pattern now also recognizes `File not found`
+and `File does not exist`. A file first reported missing and then written
+therefore counts as added, as the extraction rules intend.
+
+This was found while auditing blind labels. One labeling packet showed a
+new test file with the one-line base `File not found: …`. The labeler
+judged the new file alone, so no label depends on the bug. The fix was
+committed before any detector run.
+
+**Blind labels, done.** The 56 H-TM trajectories were labeled by four
+independent review agents (14 each):
+
+| Code-visible | Trajectories |
+|---|---|
+| Yes | 43 |
+| No | 6 |
+| Unclear | 7 |
+
+All seven "unclear" labels are trajectories whose test files were changed
+only by Bash commands that could not be replayed. The packets cut each
+patch at 8,000 characters and each trajectory at 40,000.
+
+**Author audit.** The seeded 20% (11 items, seed 20260930) was labeled
+independently before looking at the agents' labels. It agreed on all 11.
+
 ### Detector under test
 
 The patch rules and PR mode run at detector commit `ce836ad` (schema
