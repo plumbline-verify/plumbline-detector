@@ -77,3 +77,35 @@ hold, PR mode stays advisory, including the new checks.
 - Mocks installed by fixtures outside the test.
 - Exclusions made by moving files out of the collected paths.
 - Test timeouts in configuration formats the checks do not read.
+
+## Amendment 1 (before any repository was drawn or cloned)
+
+Section 2 said the round-3 repositories come "from the same frame as
+round 2". Round 2 had no frame: its 20 repositories were a fixed list. The
+frame is fixed now, and it matches the population the product is for:
+
+- **Frame.** The 297 repositories analyzed in the matched study
+  (docs/MATCHED_STUDY.md). These are public repositories with at least
+  five merged agent PRs in AIDev, and none of them was used in PR-mode
+  rounds 1–2. Repository identity is used internally only, under the
+  operator's A-2 approval. Committed outputs carry the repository's
+  hashed identifier (`rhash`), never its name.
+- **Draw.** 60 repositories, seed 20261001, in draw order.
+- **Changes.** The 100 most recent first-parent commits per repository,
+  each compared with its first parent. Round 2's alarm rate (1.2% of
+  changes) means 30 commits per repository would give too few findings
+  for n ≥ 50 within 60 repositories.
+- **Stopping, made deterministic.** All 60 are replayed. Repositories are
+  then taken in draw order until pooled findings reach 50, and the round
+  consists of exactly those repositories. If 50 is never reached, it
+  consists of all 60, and that is reported.
+- **Clones.** Shallow (depth 101, single branch). A repository that cannot
+  be cloned, or whose checkout exceeds 2 GB, is reported and not
+  replaced.
+- **Labels.** Every finding in the round is labeled, up to 150. Beyond
+  150, a sample is drawn with seed 20261002, stratified by check. Labels
+  follow PR_MODE_STUDY.md (TP or FP; benign, weakening or unclear) for
+  every check, old and new. The author audits a seeded 20% (seed
+  20261003).
+- **Seed correction.** Section 2 gave the audit seed as 20261002. That
+  seed now draws the label sample, and the audit uses 20261003.
