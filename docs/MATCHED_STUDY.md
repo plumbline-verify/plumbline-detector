@@ -162,3 +162,30 @@ added.
 before writing any output: one worker ran out of memory while another job
 shared the machine. It was re-run unchanged, with fewer workers and
 nothing running alongside. No packet or label existed before the re-run.
+
+## Volume and sensitivity (requested by review; descriptive, not pre-registered)
+
+**Volume.** Primary set, 262 repositories:
+
+- Agents wrote 6,778 of 93,014 changes (7.3%); the median per
+  repository is 8.7%, with an interquartile range of 3.2–23.3%.
+- Agents wrote 9.7% of the lines changed.
+- Agents wrote 152 of the 2,358 flagged changes (6.4%).
+- Agent changes outnumber human changes in 15 of the 262 repositories.
+
+Agent attribution requires a PR reference in the commit, so these shares
+are lower bounds.
+
+**Sensitivity of the primary ratio.**
+
+| Cut | Repositories | MH risk ratio (95% CI) |
+|---|---|---|
+| Primary (≥1 agent, ≥5 human) | 262 | 1.01 (0.85–1.22) |
+| ≥5 agent, ≥20 human | 191 | 1.00 (0.83–1.20) |
+| ≥20 agent, ≥50 human | 54 | 1.03 (0.83–1.28) |
+| Leave one repository out | 261 each | 0.97–1.04 (range of point estimates) |
+| Crude, unstratified | 262 | 0.88 |
+
+The gap between the crude and stratified ratios shows that agents are
+somewhat more common in repositories where changes are flagged less
+often. Stratifying by repository removes that.
