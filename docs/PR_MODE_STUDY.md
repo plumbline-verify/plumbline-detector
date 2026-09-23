@@ -60,8 +60,8 @@ docs/PHASE_B.md, "What would measure this detector").
 **Coverage.** 19 of 20 repositories; pallets/blinker could not be cloned
 (the host asked for credentials) and is reported missing, not replaced.
 570 changes replayed; none skipped, no errors. Commits are in
-`docs/pr_study/repositories.json`; every finding and its label is in
-`docs/pr_study/labeled_findings.jsonl`.
+`docs/pr_study/round1_repositories.json`; every finding and its label is in
+`docs/pr_study/round1_labeled_findings.jsonl`.
 
 **Alarm rate: 12 of 570 changes (2.1%).** Meets the pre-registered ceiling
 of 10%.
@@ -137,3 +137,50 @@ with seed 20260924); benign or weakening for each TP; the author audits a
 seeded 20% (seed 20260925). Ship as default-on if precision is at least 90%
 with a lower bound of at least 80% and the alarm rate is at most 10%;
 advisory between 80% and that bar; not shipped below 80%.
+
+## Round 2 results (detector `3322267`, schema 1.6.0)
+
+**Coverage.** All 20 repositories cloned; 600 changes replayed; none
+skipped, no errors. Files: `docs/pr_study/round2/`.
+
+**Alarm rate: 7 of 600 changes (1.2%).**
+
+**Factual precision: 15 of 15 findings (100%; 95% Wilson interval
+79.6–100%).** No false positive. The point estimate clears the 90% bar; the
+lower bound of the interval, 79.6%, falls just short of the pre-registered
+80%, because fifteen findings are too few to establish it. **By the
+decision rule, PR mode ships as advisory**, not yet default-on. Reaching
+default-on needs more labeled findings at this precision (with no false
+positive, about 17 would move the lower bound above 80%); the next round
+adds them.
+
+| Check | Findings | TP | Benign | Weakening |
+|---|---|---|---|---|
+| PR-ASSERTIONS-REMOVED | 11 | 11 | 11 | 0 |
+| PR-NEW-TAMPERING | 2 | 2 | 2 | 0 |
+| PR-TESTS-REMOVED | 2 | 2 | 1 | 1 |
+
+**One change weakened verification.** A test refactor in one repository
+replaced two tests (sync and async mode) with a loop over
+`for (const sync in [true, false])`. `for...in` over an array yields the
+index strings `'0'` and `'1'`, both truthy, so both iterations run in sync
+mode and the async path is no longer tested; the loop is still present at
+the repository's current head. The change looked like an improvement and
+passed review. Per the study's standing rule this was observed only; no
+issue or pull request was opened.
+
+**Benign true positives** include no-op `t.assert.ok(true)` calls removed
+with the plan count lowered, `pytest.raises` rewritten as an equivalent
+try/except in a helper, a test for an unsupported Python version removed,
+and `continue-on-error` added for new pre-release legs while an older
+version became required.
+
+**What round 2 shows about the round-1 fixes.** Neither false-positive
+cause recurred: no pre-existing CI construct was re-reported, and no moved
+test was reported as removed.
+
+**Audit.** The author checked the seeded 20% (PR2#7, PR2#11, PR2#14)
+against history and agrees with all three.
+
+**Rounds are not pooled**: round 1 measured schema 1.5.0 and round 2
+measured 1.6.0.

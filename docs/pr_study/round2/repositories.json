@@ -1,0 +1,22 @@
+{
+  "argon2-cffi": "7ac05ea37ccc01d0bd1a787206227ba3a37a3d64",
+  "cachetools": "3c082c654c2804b9354e4b62dbd2994f1aac464d",
+  "cbor2": "7f84e3da1b60dcdd696c0d4bbcc7d4b9d0b4a2ff",
+  "check-jsonschema": "99f2dd369364da7ed3ac536504132b3db2e7a3b1",
+  "cors": "5317ebe670db2aaebc1d496eb5d33493deefb3ed",
+  "defu": "82632b66f5914e9946edce300e10633a3d5c0cb7",
+  "fastify-cors": "7670483c5b47f5ed5ea1e7743ed2e406d86a1c96",
+  "iniconfig": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e",
+  "keyring": "7603e7cadc254b4c6e3fc2b2f0916a005e78087d",
+  "mako": "14889bc0feacd12102ee61f0769677be2fddbc1b",
+  "mime-types": "3a1187ee21388efe46b916d4991589d595bcb26c",
+  "morgan": "b1272e70812dbc504321eeb5a43d14b0822c150d",
+  "p-limit": "a8a6fbec4e0e866d6d779b10889bb4f5567e70eb",
+  "pyproject-hooks": "184c9f56a87ede1276a5b33f5024204adb792cd2",
+  "six": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
+  "sonic-boom": "83864826072b60a35ff2899a598d314f17acf55a",
+  "typeguard": "123f1abc7e82bbe980c779005de858533e1786c3",
+  "typing_extensions": "3ae9b7553a5c560dc09b484078d98ece2985eecd",
+  "ufo": "f06c800d0c59f2a4a1b9ba65eb6cb61a84419be6",
+  "zipp": "29a7a55c6bac1a6f705b54135dbea82d03e997c3"
+}
