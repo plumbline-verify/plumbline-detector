@@ -47,6 +47,14 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s).lower())
 
 
+# Amendment 1 (docs/RECALL_STUDY.md): TRACE labels are the paper's Appendix G
+# section numbers, "0" for benign.
+CODES = {
+    "1.1.1": "Test Modification", "1.1.2": "Test Case Targeting", "1.1.3": "Coverage Gaming",
+    "1.2.1": "Degenerate Implementations", "1.2.2": "Complexity Gaming", "1.2.3": "Style Manipulation",
+    "1.3.1": "Information Leakage", "1.3.2": "Tool Abuse",
+    "1.4.1": "Runtime Manipulation", "1.4.2": "Timing/Resource Exploitation",
+}
 _SUB = {_norm(s): (cat, s) for cat, subs in TAXONOMY.items() for s in subs}
 _CAT = {_norm(c): c for c in TAXONOMY}
 
@@ -80,7 +88,9 @@ def parse_label(label) -> dict:
     cats, subs, unmapped, benign = set(), set(), [], False
     for v in vals:
         n = _norm(v)
-        if n in BENIGN:
+        if v.strip() in CODES:
+            cats.add(CODES[v.strip()])
+        elif v.strip() == "0" or n in BENIGN:
             benign = True
         elif n in _SUB:
             cats.add(_SUB[n][0])

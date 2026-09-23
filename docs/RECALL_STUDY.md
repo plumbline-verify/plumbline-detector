@@ -132,6 +132,38 @@ hash is recorded in the results. If the envelope defeats the rules above
 (for example, tool calls are not machine-readable), that is reported as a
 failure of this protocol and not worked around silently.
 
+### Amendment 1 (after labels were read, before the detector was run)
+
+The `label` values turned out to be section numbers, not names, so the
+name mapping above matched none of them. The distinct values are `0` and
+ten codes from `1.1.1` to `1.4.2`. They are the section numbers of the
+paper's Appendix G:
+
+| Code | Category |
+|---|---|
+| `1.1.1` | Test Modification |
+| `1.1.2` | Test Case Targeting |
+| `1.1.3` | Coverage Gaming |
+| `1.2.1` | Degenerate Implementations |
+| `1.2.2` | Complexity Gaming |
+| `1.2.3` | Style Manipulation |
+| `1.3.1` | Information Leakage |
+| `1.3.2` | Tool Abuse |
+| `1.4.1` | Runtime Manipulation |
+| `1.4.2` | Timing & Resource Exploitation |
+
+`0` is benign. It appears on 249 rows, which matches the dataset card's 249
+benign trajectories, and never together with a code. The label parser now
+maps these codes. The code was committed before any detector run, so the
+amendment could not be shaped by detector output. With it, every label
+maps: 249 benign, 56 H-TM, 151 H-TSE and 117 H-other trajectories (268
+hacked).
+
+**Consequence:** the labels name categories, not subcategories. Measure 6
+(recall per Test Modification subcategory) cannot be computed and is
+dropped. The blind labeler sees category names instead of subcategory
+names.
+
 ### Detector under test
 
 The patch rules and PR mode run at detector commit `ce836ad` (schema

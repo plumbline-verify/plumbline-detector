@@ -43,3 +43,6 @@ def test_labels_map_to_taxonomy():
     assert p["categories"] == ["Test Case Targeting", "Test Modification"] and not p["benign"]
     assert trace_extract.parse_label("benign")["benign"]
     assert trace_extract.parse_label("something else")["unmapped"] == ["something else"]
+    # Amendment 1: Appendix G section numbers
+    assert trace_extract.parse_label("1.1.1, 1.2.1")["categories"] == ["Degenerate Implementations", "Test Modification"]
+    assert trace_extract.parse_label("0")["benign"]
