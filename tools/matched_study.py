@@ -104,6 +104,11 @@ def _lang(paths):
     return "Python" if py >= js else "JS/TS"
 
 
+def _tree_bytes(root):
+    # lstat: a broken symlink in a checkout is not an error (harness correction 1)
+    return sum(os.lstat(os.path.join(dp, f)).st_size for dp, _, fs in os.walk(root) for f in fs)
+
+
 def process(item):
     url = item["repo_url"]
     h = rhash(url)
@@ -119,7 +124,7 @@ def process(item):
             return {"repo": h, "skipped": "clone timeout"}
         if r.returncode != 0:
             return {"repo": h, "skipped": "clone failed"}
-        size = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(repo) for f in fs)
+        size = _tree_bytes(repo)
         if size > MAX_BYTES:
             return {"repo": h, "skipped": "over 2 GB"}
         log = _git(repo, "log", "--first-parent", f"--since={first.isoformat()}", f"--until={last.isoformat()}",
@@ -173,7 +178,19 @@ def process(item):
 
 def run(a):
     items = [json.loads(l) for l in open(os.path.join(a.out, "sample_private.jsonl"))]
-    with ProcessPoolExecutor(a.jobs) as ex, open(os.path.join(a.out, "repos.jsonl"), "w") as out:
+    mode = "w"
+    if a.retry_errors:
+        # re-run only repositories skipped by a harness error; every other result is kept as is
+        path = os.path.join(a.out, "repos.jsonl")
+        prior = [json.loads(l) for l in open(path)]
+        errored = {r["repo"] for r in prior if r.get("skipped", "").startswith("error:")}
+        with open(path, "w") as out:
+            for r in prior:
+                if r["repo"] not in errored:
+                    out.write(json.dumps(r, sort_keys=True) + "\n")
+        items = [it for it in items if rhash(it["repo_url"]) in errored]
+        mode = "a"
+    with ProcessPoolExecutor(a.jobs) as ex, open(os.path.join(a.out, "repos.jsonl"), mode) as out:
         for i, res in enumerate(ex.map(process, items), 1):
             out.write(json.dumps(res, sort_keys=True) + "\n")
             out.flush()
@@ -240,6 +257,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sample"); s.add_argument("--prs", required=True); s.add_argument("--out", required=True)
     r = sub.add_parser("run"); r.add_argument("--out", required=True); r.add_argument("--jobs", type=int, default=6)
+    r.add_argument("--retry-errors", action="store_true")
     z = sub.add_parser("analyze"); z.add_argument("--out", required=True)
     a = ap.parse_args()
     {"sample": sample, "run": run, "analyze": analyze}[a.cmd](a)

@@ -72,3 +72,15 @@ group-specific precision.
 **What this cannot show.** Intent; changes that do not reference their PR
 number (they fall into the human group); repositories that squash without
 PR references (they contribute no agent changes and drop out).
+
+## Harness corrections
+
+Recorded while the run was in progress, before any result was analyzed.
+
+1. **Broken symlinks (2026-09-23).** The repository-size check used
+   `os.path.getsize`, which follows symlinks. A checkout containing a
+   broken symlink raised `FileNotFoundError`, and the repository was
+   skipped as an error. The check now uses `lstat`. Only the repositories
+   skipped by a harness error are re-run (`run --retry-errors`); every
+   other result is kept unchanged. The number of repositories affected is
+   reported with the results.
