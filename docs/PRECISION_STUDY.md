@@ -299,3 +299,103 @@ per check across all thirty repositories; all labeled if 40 or fewer, else
 definitions; independent labeling agents without access to the detector code
 or earlier rounds; the author audits a seeded random 20% (seed 20260923).
 GT-NO-GATE is not labeled.
+
+## Results (round 3, detector `ea36d78`, schema 1.3.0)
+
+All thirty repositories cloned; every record carries the pre-registered
+fingerprint `sha256:47147ca9…`. Labeled findings are in
+`precision/round3/labeled_findings.jsonl`.
+
+### Precision
+
+| Check | Findings (pool) | Labeled | TP | FP-detector | FP-scope | Precision | 95% CI |
+|---|---|---|---|---|---|---|---|
+| EC-ASSERTION-NONSTANDARD-JS | 45 | 40 | 39 | 1 | 0 | 98% | 87%–100% |
+| EC-TESTS-NOT-RUN | 14 | 14 | 10 | 4 | 0 | 71% | 45%–88% |
+| EC-NO-ASSERTION | 445 | 40 | 26 | 6 | 8 | 65% | 50%–78% |
+| EC-NO-ASSERTION-JS | 249 | 40 | 15 | 25 | 0 | 38% | 24%–53% |
+| EC-TESTS-NOT-RUN-JS | 64 | 40 | 11 | 29 | 0 | 28% | 16%–43% |
+| EC-ASSERTION-NONSTANDARD | 57 | 40 | 6 | 0 | 34 | 15% | 7%–29% |
+| GT-CONTINUE-ON-ERROR | 2 | 2 | 2 | 0 | 0 | 100% | 34%–100% |
+| EC-EXIT-BEFORE-ASSERT-JS | 1 | 1 | 1 | 0 | 0 | 100% | 21%–100% |
+| EC-SPECIAL-CASED | 1 | 1 | 1 | 0 | 0 | 100% | 21%–100% |
+| EC-EQUALITY-OVERRIDE | 1 | 1 | 0 | 1 | 0 | 0% | 0%–79% |
+| GT-AGGREGATOR-PERMISSIVE | 2 | 2 | 0 | 0 | 2 | 0% | 0%–66% |
+| GT-SKIP-SATISFIES | 2 | 2 | 0 | 0 | 2 | 0% | 0%–66% |
+| All labeled (unweighted) | | 223 | 111 | 66 | 46 | 50% | 43%–56% |
+
+Python checks 45/102 (44%); JS/TS checks 66/121 (55%).
+
+**Plainly: overall precision is 50%, the third round in a row near that
+figure (57%, 55%, 50%).** The fixes after each round remove that round's
+causes; each new set of repositories brings new ones.
+
+### Where the false positives came from
+
+| Cause | Check | FP | Kind |
+|---|---|---|---|
+| pytest-xdist `example/loadscope/`: a scheduling demo whose `test_*.py` files hold `sleep(5); assert True`, outside `testpaths` | NONSTANDARD | 34 | scope |
+| svelte-query tests whose body is `withEffectRoot(async () => …)`, a call returning the test function, read as "no body" | TESTS-NOT-RUN-JS 24 | 24 | detector |
+| Type-level assertions (zod's `util.assertEqual<A, B>(true)`, `@ts-expect-error`, `satisfies`) enforced by `vitest --typecheck` | NO-ASSERTION-JS | 17 | detector |
+| Assertions through `tspl` plans or helpers receiving an assertion function (`check(assert.equal, …)`) | NO-ASSERTION-JS | 6 | detector |
+| Benchmarks with no assertion (labelers split; see below) | NO-ASSERTION | 6 | scope |
+| Assertion APIs not recognized: webtest `status=`, `zope.interface.verify*`, SQLAlchemy's `eq_` used from alembic | NO-ASSERTION | 5 | detector |
+| ava macro tests (`test(title, macro, …)`) read as "no body" | TESTS-NOT-RUN-JS | 5 | detector |
+| Hypothesis tests deselected by `addopts` but run by dedicated CI jobs with `-m hypothesis` | TESTS-NOT-RUN | 4 | detector |
+| An AI-agent workflow's `conclusion` job inferred to be the merge aggregator | GT-SKIP, GT-AGGREGATOR | 4 | scope |
+| gunicorn `examples/` files excluded by `norecursedirs` but named like tests | NO-ASSERTION | 3 | scope 2, detector 1 |
+| Single cases: `.rejects` inside `await Promise.all([...])`; ava `t.pass()`; node:test `t.assert.ifError`; a helper method reached through `pilot.app.…` | several | 4 | detector |
+
+Two repository-specific patterns, pytest-xdist's example directory and
+svelte-query's test-body helper, account for 58 of the 112 false
+positives.
+
+### Label audit
+
+The author reviewed 45 labels (seeded random 20%) and agreed with all 45.
+Labelers were inconsistent on one class: of 16 sampled benchmark functions
+with no assertion, 10 were labeled TP ("collected and run, asserts
+nothing") and 6 FP-scope ("a benchmark is not a correctness test"). Labels
+stand as given; labeling all 16 one way or the other moves overall
+precision between 45% and 52%.
+
+### Post-hoc views (not pre-registered; for diagnosis only)
+
+- Excluding pytest-xdist's `example/loadscope/`: 111/189 = 59%.
+- Detector errors only, TP / (TP + FP-detector): 111/177 = 63% (round 1:
+  61%, round 2: 74%).
+
+### Notable true positives
+
+- zod: dozens of `expect(x).toBeNull;` lines across its v3 and v4 test
+  suites reference the matcher without calling it, so none of those checks
+  runs; zod also has `expect(true).toBe(true)` as the entire body of tests.
+- react-router: `expect(true).toBe(true)` as a test's only assertion, and
+  eight tests inside an unconditional `describe.skip`.
+- falcon: `assert ws.close_reason == reason or 'Bad Request'`, which parses
+  as `(a == b) or 'Bad Request'` and cannot fail.
+- pyramid: `assertTrue(result.body, b'foo')`, where `b'foo'` is the
+  failure message, not a comparand.
+- kombu: two assertions after the raising call inside `pytest.raises`.
+- fastify: `process.exit(0)` in a test body (behind a guard that is false
+  on supported Node versions) and a `test-unit` job with
+  `continue-on-error: true`.
+
+Observation only: none of these was reported to the projects.
+
+### What three rounds say
+
+1. Precision on unseen repositories has stayed at 50–57% across three
+   versions of the detector. Each round's fixes work on that round's causes
+   and do not raise the next round's figure. The error distribution is
+   long-tailed and clustered: in every round, one or two repositories'
+   idioms produce half the false positives.
+2. Per-check precision is the useful number, and it is now shipped with every
+   finding. EC-ASSERTION-NONSTANDARD-JS (98%, one round) and
+   GT-CONTINUE-ON-ERROR (8 of 10 across rounds 1–3; 7 of 7 after the
+   round-1 fix) are the strongest; EC-TESTS-NOT-RUN has ranged 57–89%. The
+   others should be read as leads for review, not verdicts.
+3. The remaining large classes are about context the checks do not model:
+   which files a runner executes (example and demo directories), which
+   helpers a framework provides (test-body wrappers, macros), and which
+   checks happen at type-check time.

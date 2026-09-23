@@ -138,6 +138,100 @@
       "round": 2,
       "ruleset_fingerprint": "sha256:2db2c62cd6808bab42af532fe03d7a080afb1f0159614b65d0b1e43673dd0410",
       "schema": "1.2.0"
+    },
+    {
+      "checks": {
+        "EC-ASSERTION-NONSTANDARD": {
+          "fp_detector": 0,
+          "fp_scope": 34,
+          "labeled": 40,
+          "pool": 57,
+          "tp": 6
+        },
+        "EC-ASSERTION-NONSTANDARD-JS": {
+          "fp_detector": 1,
+          "fp_scope": 0,
+          "labeled": 40,
+          "pool": 45,
+          "tp": 39
+        },
+        "EC-EQUALITY-OVERRIDE": {
+          "fp_detector": 1,
+          "fp_scope": 0,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 0
+        },
+        "EC-EXIT-BEFORE-ASSERT-JS": {
+          "fp_detector": 0,
+          "fp_scope": 0,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 1
+        },
+        "EC-NO-ASSERTION": {
+          "fp_detector": 6,
+          "fp_scope": 8,
+          "labeled": 40,
+          "pool": 445,
+          "tp": 26
+        },
+        "EC-NO-ASSERTION-JS": {
+          "fp_detector": 25,
+          "fp_scope": 0,
+          "labeled": 40,
+          "pool": 249,
+          "tp": 15
+        },
+        "EC-SPECIAL-CASED": {
+          "fp_detector": 0,
+          "fp_scope": 0,
+          "labeled": 1,
+          "pool": 1,
+          "tp": 1
+        },
+        "EC-TESTS-NOT-RUN": {
+          "fp_detector": 4,
+          "fp_scope": 0,
+          "labeled": 14,
+          "pool": 14,
+          "tp": 10
+        },
+        "EC-TESTS-NOT-RUN-JS": {
+          "fp_detector": 29,
+          "fp_scope": 0,
+          "labeled": 40,
+          "pool": 64,
+          "tp": 11
+        },
+        "GT-AGGREGATOR-PERMISSIVE": {
+          "fp_detector": 0,
+          "fp_scope": 2,
+          "labeled": 2,
+          "pool": 2,
+          "tp": 0
+        },
+        "GT-CONTINUE-ON-ERROR": {
+          "fp_detector": 0,
+          "fp_scope": 0,
+          "labeled": 2,
+          "pool": 2,
+          "tp": 2
+        },
+        "GT-SKIP-SATISFIES": {
+          "fp_detector": 0,
+          "fp_scope": 2,
+          "labeled": 2,
+          "pool": 2,
+          "tp": 0
+        }
+      },
+      "date": "2026-09-23",
+      "detector_commit": "ea36d78",
+      "repositories": 30,
+      "round": 3,
+      "ruleset_fingerprint": "sha256:47147ca9f073da2cc48d5265613488eca4294726d7de9ff5ad9471b5f79d6e64",
+      "schema": "1.3.0"
     }
   ],
   "source": "docs/PRECISION_STUDY.md"

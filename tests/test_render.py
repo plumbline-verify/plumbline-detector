@@ -84,10 +84,11 @@ def test_measured_precision_attached_and_honest():
     assert lo <= m["EC-NO-ASSERTION"]["precision"] <= hi
     assert m["GT-NO-GATE"] is None  # never labeled, by protocol
     measurements, digest = load_measurements()
-    measured_fps = {r["ruleset_fingerprint"] for r in measurements["rounds"]}
+    fp_by_round = {r["round"]: r["ruleset_fingerprint"] for r in measurements["rounds"]}
     for v in m.values():
         if v:
-            assert v["same_ruleset"] == (ruleset_fingerprint() in measured_fps)
+            # same_ruleset is true exactly when that round measured this code
+            assert v["same_ruleset"] == (fp_by_round[v["round"]] == ruleset_fingerprint())
     assert rec["provenance"]["measurements_sha256"] == digest
     md = to_markdown(rec)
     assert "Measured precision" in md and "not measured" in md
