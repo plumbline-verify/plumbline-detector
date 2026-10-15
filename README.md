@@ -1,5 +1,10 @@
 # plumbline-detector
 
+> **Research origin of [Plumbline Grader](https://plumblinegrader.com).** This detector, and the
+> pre-registered studies in [docs/](docs/), are where Plumbline's work began. It is kept as published
+> and is not under active development. Plumbline Grader now audits the graders that train and rank AI
+> models: [plumblinegrader.com](https://plumblinegrader.com).
+
 A static, offline, artifact-only detector that answers one question about a
 repository snapshot: **is this codebase's verification evidence real, or does
 it only look real?**
